@@ -5,13 +5,11 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 from pathlib import Path
-import sys
 
 from find_alan.upscale import (
     DEFAULT_NEGATIVE_PROMPT,
     DEFAULT_PROMPT,
     DiffusionUpscaleConfig,
-    MissingMLDependencies,
     run_diffusion_upscale,
 )
 
@@ -27,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt", default=None)
     parser.add_argument("--negative-prompt", default=None)
     parser.add_argument("--model-id", default="SG161222/RealVisXL_V5.0")
-    parser.add_argument("--controlnet-id", default="brad-twinkl/controlnet-union-sdxl-1.0-promax")
+    parser.add_argument("--controlnet-id", default="OzzyGT/controlnet-union-promax-sdxl-1.0")
     parser.add_argument("--vae-id", default="madebyollin/sdxl-vae-fp16-fix")
     parser.add_argument("--device", default=None)
     parser.add_argument("--seed", type=int, default=1337)
@@ -65,12 +63,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         cpu_offload=not args.no_cpu_offload,
     )
 
-    try:
-        output_path = run_diffusion_upscale(config)
-    except MissingMLDependencies as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-
+    output_path = run_diffusion_upscale(config)
     print(output_path)
     return 0
 

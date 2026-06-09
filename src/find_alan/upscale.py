@@ -6,6 +6,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import torch
+from diffusers import (
+    AutoencoderKL,
+    ControlNetUnionModel,
+    DiffusionPipeline,
+    UniPCMultistepScheduler,
+)
+from PIL import Image
+
 
 DEFAULT_PROMPT = (
     "dense illustrated crowd scene, crisp ink linework, natural faces, coherent clothing, "
@@ -17,10 +26,6 @@ DEFAULT_NEGATIVE_PROMPT = (
 )
 
 
-class MissingMLDependencies(RuntimeError):
-    """Raised when optional ML dependencies are not installed."""
-
-
 @dataclass(frozen=True)
 class DiffusionUpscaleConfig:
     input_path: Path
@@ -29,7 +34,7 @@ class DiffusionUpscaleConfig:
     prompt: str = DEFAULT_PROMPT
     negative_prompt: str = DEFAULT_NEGATIVE_PROMPT
     model_id: str = "SG161222/RealVisXL_V5.0"
-    controlnet_id: str = "brad-twinkl/controlnet-union-sdxl-1.0-promax"
+    controlnet_id: str = "OzzyGT/controlnet-union-promax-sdxl-1.0"
     vae_id: str = "madebyollin/sdxl-vae-fp16-fix"
     custom_pipeline: str = "mod_controlnet_tile_sr_sdxl"
     device: str | None = None
@@ -58,32 +63,6 @@ def target_size(width: int, height: int, scale: float, multiple: int = 8) -> tup
     )
 
 
-def _import_ml() -> dict[str, Any]:
-    try:
-        import torch
-        from diffusers import (
-            AutoencoderKL,
-            ControlNetUnionModel,
-            DiffusionPipeline,
-            UniPCMultistepScheduler,
-        )
-        from PIL import Image
-    except ImportError as exc:
-        raise MissingMLDependencies(
-            "Install the optional image stack with `uv sync --extra ml`. "
-            "For CUDA-specific PyTorch wheels, install torch from the PyTorch index first."
-        ) from exc
-
-    return {
-        "torch": torch,
-        "AutoencoderKL": AutoencoderKL,
-        "ControlNetUnionModel": ControlNetUnionModel,
-        "DiffusionPipeline": DiffusionPipeline,
-        "UniPCMultistepScheduler": UniPCMultistepScheduler,
-        "Image": Image,
-    }
-
-
 def _tile_weighting_method(pipe: Any) -> str:
     method_enum = getattr(pipe, "TileWeightingMethod", None)
     cosine = getattr(method_enum, "COSINE", None) if method_enum else None
@@ -102,14 +81,6 @@ def _overlaps(pipe: Any, width: int, height: int, requested: int | None) -> tupl
 
 
 def run_diffusion_upscale(config: DiffusionUpscaleConfig) -> Path:
-    ml = _import_ml()
-    torch = ml["torch"]
-    Image = ml["Image"]
-    AutoencoderKL = ml["AutoencoderKL"]
-    ControlNetUnionModel = ml["ControlNetUnionModel"]
-    DiffusionPipeline = ml["DiffusionPipeline"]
-    UniPCMultistepScheduler = ml["UniPCMultistepScheduler"]
-
     device = config.device or ("cuda" if torch.cuda.is_available() else "cpu")
     dtype = torch.float16 if device.startswith("cuda") else torch.float32
 
@@ -121,8 +92,10 @@ def run_diffusion_upscale(config: DiffusionUpscaleConfig) -> Path:
     controlnet = ControlNetUnionModel.from_pretrained(
         config.controlnet_id,
         torch_dtype=dtype,
+        variant="fp16",
+        use_safetensors=True,
     ).to(device=device)
-    vae = AutoencoderKL.from_pretrained(config.vae_id, torch_dtype=dtype).to(device=device)
+    vae = AutoencoderKL.from_pretrained(config.vae_id, torch_dtype=dtype, use_safetensors=True).to(device=device)
 
     pipe = DiffusionPipeline.from_pretrained(
         config.model_id,
