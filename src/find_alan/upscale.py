@@ -1,19 +1,10 @@
-"""Diffusion upscaling starter pipeline."""
+"""Diffusion upscaling entry points."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-import torch
-from diffusers import (
-    AutoencoderKL,
-    ControlNetUnionModel,
-    DiffusionPipeline,
-    UniPCMultistepScheduler,
-)
-from PIL import Image
 
 
 DEFAULT_PROMPT = (
@@ -24,6 +15,12 @@ DEFAULT_NEGATIVE_PROMPT = (
     "blurry, pixelated, low resolution, smeared faces, duplicate faces, malformed eyes, "
     "text artifacts, watermark, oversharpened halos"
 )
+DEFAULT_MOD_CONTROLNET_ID = "OzzyGT/controlnet-union-promax-sdxl-1.0"
+DEFAULT_MULTIDIFFUSION_CONTROLNET_ID = "xinsir/controlnet-tile-sdxl-1.0"
+
+
+class MissingMLDependencies(RuntimeError):
+    """Raised when optional ML dependencies are not installed."""
 
 
 @dataclass(frozen=True)
@@ -34,9 +31,10 @@ class DiffusionUpscaleConfig:
     prompt: str = DEFAULT_PROMPT
     negative_prompt: str = DEFAULT_NEGATIVE_PROMPT
     model_id: str = "SG161222/RealVisXL_V5.0"
-    controlnet_id: str = "OzzyGT/controlnet-union-promax-sdxl-1.0"
+    controlnet_id: str = DEFAULT_MOD_CONTROLNET_ID
     vae_id: str = "madebyollin/sdxl-vae-fp16-fix"
     custom_pipeline: str = "mod_controlnet_tile_sr_sdxl"
+    engine: str = "mod-tile"
     device: str | None = None
     seed: int | None = 1337
     steps: int = 35
@@ -47,6 +45,10 @@ class DiffusionUpscaleConfig:
     tile_gaussian_sigma: float = 0.3
     overlap: int | None = None
     cpu_offload: bool = True
+    multidiffusion_tile_size: int = 1024
+    multidiffusion_overlap: int = 512
+    multidiffusion_jitter: int | None = None
+    multidiffusion_view_batch_size: int = 1
 
 
 def _ceil_to_multiple(value: int, multiple: int) -> int:
@@ -61,6 +63,32 @@ def target_size(width: int, height: int, scale: float, multiple: int = 8) -> tup
         _ceil_to_multiple(round(width * scale), multiple),
         _ceil_to_multiple(round(height * scale), multiple),
     )
+
+
+def _import_mod_pipeline() -> dict[str, Any]:
+    try:
+        import torch
+        from diffusers import (
+            AutoencoderKL,
+            ControlNetUnionModel,
+            DiffusionPipeline,
+            UniPCMultistepScheduler,
+        )
+        from PIL import Image
+    except ImportError as exc:
+        raise MissingMLDependencies(
+            "Install the optional image stack with `uv sync --extra ml`. "
+            "For CUDA-specific PyTorch wheels, install torch from the PyTorch index first."
+        ) from exc
+
+    return {
+        "torch": torch,
+        "AutoencoderKL": AutoencoderKL,
+        "ControlNetUnionModel": ControlNetUnionModel,
+        "DiffusionPipeline": DiffusionPipeline,
+        "UniPCMultistepScheduler": UniPCMultistepScheduler,
+        "Image": Image,
+    }
 
 
 def _tile_weighting_method(pipe: Any) -> str:
@@ -80,7 +108,15 @@ def _overlaps(pipe: Any, width: int, height: int, requested: int | None) -> tupl
     return calculate_overlap(width, height)
 
 
-def run_diffusion_upscale(config: DiffusionUpscaleConfig) -> Path:
+def _run_mod_tile_upscale(config: DiffusionUpscaleConfig) -> Path:
+    ml = _import_mod_pipeline()
+    torch = ml["torch"]
+    Image = ml["Image"]
+    AutoencoderKL = ml["AutoencoderKL"]
+    ControlNetUnionModel = ml["ControlNetUnionModel"]
+    DiffusionPipeline = ml["DiffusionPipeline"]
+    UniPCMultistepScheduler = ml["UniPCMultistepScheduler"]
+
     device = config.device or ("cuda" if torch.cuda.is_available() else "cpu")
     dtype = torch.float16 if device.startswith("cuda") else torch.float32
 
@@ -92,7 +128,7 @@ def run_diffusion_upscale(config: DiffusionUpscaleConfig) -> Path:
     controlnet = ControlNetUnionModel.from_pretrained(
         config.controlnet_id,
         torch_dtype=dtype,
-        variant="fp16",
+        variant="fp16" if dtype is torch.float16 else None,
         use_safetensors=True,
     ).to(device=device)
     vae = AutoencoderKL.from_pretrained(config.vae_id, torch_dtype=dtype, use_safetensors=True).to(device=device)
@@ -151,3 +187,14 @@ def run_diffusion_upscale(config: DiffusionUpscaleConfig) -> Path:
     config.output_path.parent.mkdir(parents=True, exist_ok=True)
     images[0].save(config.output_path)
     return config.output_path
+
+
+def run_diffusion_upscale(config: DiffusionUpscaleConfig) -> Path:
+    if config.engine == "mod-tile":
+        return _run_mod_tile_upscale(config)
+    if config.engine == "multidiffusion":
+        from .experimental_multidiffusion import run_multidiffusion_upscale
+
+        return run_multidiffusion_upscale(config)
+
+    raise ValueError(f"Unknown upscale engine: {config.engine}")
