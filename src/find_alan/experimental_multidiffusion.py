@@ -235,6 +235,18 @@ def _offload_before_decode(pipe: Any, torch: Any) -> None:
         torch.cuda.empty_cache()
 
 
+def _progress_bar(total: int, *, desc: str, unit: str) -> Any | None:
+    if total <= 0:
+        return None
+
+    try:
+        from tqdm.auto import tqdm
+    except ImportError:
+        return None
+
+    return tqdm(total=total, desc=desc, unit=unit, dynamic_ncols=True)
+
+
 def _decode(pipe: Any, latents: Any, output_path: Path) -> Path:
     torch = __import__("torch")
     _offload_before_decode(pipe, torch)
@@ -333,82 +345,99 @@ def run_multidiffusion_upscale(config: "DiffusionUpscaleConfig") -> Path:
         steps=len(timesteps),
     )
 
-    with torch.no_grad():
-        for step_index, timestep in enumerate(timesteps):
-            noise_value = torch.zeros_like(latents)
-            count = torch.zeros(
-                (latents.shape[0], 1, latents.shape[2], latents.shape[3]),
-                device=latents.device,
-                dtype=latents.dtype,
-            )
+    total_views = sum(len(views) for views in view_schedule)
+    progress = _progress_bar(total_views, desc="MultiDiffusion crops", unit="crop")
+    try:
+        with torch.no_grad():
+            for step_index, timestep in enumerate(timesteps):
+                step_views = view_schedule[step_index]
+                if progress is not None:
+                    progress.set_postfix(
+                        step=f"{step_index + 1}/{len(timesteps)}",
+                        views=len(step_views),
+                        refresh=False,
+                    )
 
-            for view in view_schedule[step_index]:
-                y0, y1 = view.y, view.bottom
-                x0, x1 = view.x, view.right
-                latent_crop = latents[:, :, y0:y1, x0:x1]
-                latent_model_input = torch.cat([latent_crop, latent_crop]) if do_cfg else latent_crop
-                latent_model_input = pipe.scheduler.scale_model_input(latent_model_input, timestep)
-
-                pixel_y0, pixel_y1 = y0 * scale_factor, y1 * scale_factor
-                pixel_x0, pixel_x1 = x0 * scale_factor, x1 * scale_factor
-                control_crop = control_tensor[:, :, pixel_y0:pixel_y1, pixel_x0:pixel_x1]
-                if do_cfg:
-                    control_crop = torch.cat([control_crop, control_crop])
-
-                time_ids = _time_ids(
-                    pipe,
-                    original_size=(original_width, original_height),
-                    crop_top_left=(pixel_x0, pixel_y0),
-                    target=(resized_width, resized_height),
-                    dtype=dtype,
-                    device=device,
-                    do_cfg=do_cfg,
+                noise_value = torch.zeros_like(latents)
+                count = torch.zeros(
+                    (latents.shape[0], 1, latents.shape[2], latents.shape[3]),
+                    device=latents.device,
+                    dtype=latents.dtype,
                 )
-                added_cond_kwargs = {
-                    "text_embeds": pooled_prompt_embeds,
-                    "time_ids": time_ids,
-                }
 
-                down_samples, mid_sample = pipe.controlnet(
-                    latent_model_input,
+                for view in step_views:
+                    y0, y1 = view.y, view.bottom
+                    x0, x1 = view.x, view.right
+                    latent_crop = latents[:, :, y0:y1, x0:x1]
+                    latent_model_input = torch.cat([latent_crop, latent_crop]) if do_cfg else latent_crop
+                    latent_model_input = pipe.scheduler.scale_model_input(latent_model_input, timestep)
+
+                    pixel_y0, pixel_y1 = y0 * scale_factor, y1 * scale_factor
+                    pixel_x0, pixel_x1 = x0 * scale_factor, x1 * scale_factor
+                    control_crop = control_tensor[:, :, pixel_y0:pixel_y1, pixel_x0:pixel_x1]
+                    if do_cfg:
+                        control_crop = torch.cat([control_crop, control_crop])
+
+                    time_ids = _time_ids(
+                        pipe,
+                        original_size=(original_width, original_height),
+                        crop_top_left=(pixel_x0, pixel_y0),
+                        target=(resized_width, resized_height),
+                        dtype=dtype,
+                        device=device,
+                        do_cfg=do_cfg,
+                    )
+                    added_cond_kwargs = {
+                        "text_embeds": pooled_prompt_embeds,
+                        "time_ids": time_ids,
+                    }
+
+                    down_samples, mid_sample = pipe.controlnet(
+                        latent_model_input,
+                        timestep,
+                        encoder_hidden_states=prompt_embeds,
+                        controlnet_cond=control_crop,
+                        conditioning_scale=float(config.controlnet_strength),
+                        added_cond_kwargs=added_cond_kwargs,
+                        return_dict=False,
+                    )
+                    noise_pred = pipe.unet(
+                        latent_model_input,
+                        timestep,
+                        encoder_hidden_states=prompt_embeds,
+                        down_block_additional_residuals=down_samples,
+                        mid_block_additional_residual=mid_sample,
+                        added_cond_kwargs=added_cond_kwargs,
+                        return_dict=False,
+                    )[0]
+
+                    if do_cfg:
+                        noise_uncond, noise_text = noise_pred.chunk(2)
+                        noise_pred = noise_uncond + config.guidance_scale * (noise_text - noise_uncond)
+
+                    weight = _gaussian_weight(
+                        noise_pred.shape[-2],
+                        noise_pred.shape[-1],
+                        config.tile_gaussian_sigma,
+                        device=device,
+                        dtype=noise_pred.dtype,
+                    )
+                    noise_value[:, :, y0:y1, x0:x1] += noise_pred * weight
+                    count[:, :, y0:y1, x0:x1] += weight
+
+                    if progress is not None:
+                        progress.update(1)
+
+                fused_noise = noise_value / count.clamp_min(1e-6)
+                latents = pipe.scheduler.step(
+                    fused_noise,
                     timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    controlnet_cond=control_crop,
-                    conditioning_scale=float(config.controlnet_strength),
-                    added_cond_kwargs=added_cond_kwargs,
-                    return_dict=False,
-                )
-                noise_pred = pipe.unet(
-                    latent_model_input,
-                    timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    down_block_additional_residuals=down_samples,
-                    mid_block_additional_residual=mid_sample,
-                    added_cond_kwargs=added_cond_kwargs,
+                    latents,
+                    **extra_step_kwargs,
                     return_dict=False,
                 )[0]
-
-                if do_cfg:
-                    noise_uncond, noise_text = noise_pred.chunk(2)
-                    noise_pred = noise_uncond + config.guidance_scale * (noise_text - noise_uncond)
-
-                weight = _gaussian_weight(
-                    noise_pred.shape[-2],
-                    noise_pred.shape[-1],
-                    config.tile_gaussian_sigma,
-                    device=device,
-                    dtype=noise_pred.dtype,
-                )
-                noise_value[:, :, y0:y1, x0:x1] += noise_pred * weight
-                count[:, :, y0:y1, x0:x1] += weight
-
-            fused_noise = noise_value / count.clamp_min(1e-6)
-            latents = pipe.scheduler.step(
-                fused_noise,
-                timestep,
-                latents,
-                **extra_step_kwargs,
-                return_dict=False,
-            )[0]
+    finally:
+        if progress is not None:
+            progress.close()
 
     return _decode(pipe, latents, config.output_path)
