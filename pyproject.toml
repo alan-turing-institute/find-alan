@@ -4,10 +4,24 @@ version = "0.1.0"
 description = "Runnable scripts package for find-alan."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "diffusers>=0.27.0",
+    "transformers>=4.38.0",
+    # CPU/MPS: pip/uv install torch torchvision
+    # CUDA:    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "accelerate>=0.27.0",
+    "Pillow>=10.0.0",
+    "numpy>=1.26.0",
+    "safetensors>=0.4.2",
+    "huggingface-hub>=0.21.0",
+]
 
 [project.scripts]
 find-alan = "find_alan.scripts.hello:main"
+find-alan-inpaint = "find_alan.scripts.inpaint:main"
+find-alan-prepare-examples = "find_alan.scripts.prepare_examples:main"
 
 [build-system]
 requires = ["uv_build>=0.11.19,<0.12.0"]

@@ -10,16 +10,45 @@ Install the package environment:
 uv sync
 ```
 
-Run the starter script:
+## Inpainting
+
+Insert a figure into a crowd scene using IP-Adapter + Stable Diffusion inpainting.
+
+### Step 1 — Generate example images
+
+Creates synthetic test images (`crowd_scene.png`, `figure.png`, `mask.png`) in `./examples/`:
 
 ```sh
-uv run find-alan
+uv run find-alan-prepare-examples
 ```
 
-Add runnable scripts by creating modules under `src/find_alan/scripts/` with a `main()` function, then adding them to `[project.scripts]` in `pyproject.toml`.
+Replace these with real images for meaningful results.
 
-Build the package:
+### Step 2 — Run inpainting
+
+Models (~5 GB) are downloaded from Hugging Face on first run.
 
 ```sh
-uv build
+uv run find-alan-inpaint \
+  --scene examples/crowd_scene.png \
+  --figure examples/figure.png \
+  --mask examples/mask.png \
+  --output examples/result.png \
+  --seed 42
+```
+
+You can also specify a bounding box instead of a mask file:
+
+```sh
+uv run find-alan-inpaint \
+  --scene examples/crowd_scene.png \
+  --figure examples/figure.png \
+  --bbox 210 330 90 150 \
+  --output examples/result.png
+```
+
+See all options:
+
+```sh
+uv run find-alan-inpaint --help
 ```
