@@ -1,0 +1,14 @@
+[project]
+name = "find-alan"
+version = "0.1.0"
+description = "Runnable scripts package for find-alan."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+find-alan = "find_alan.scripts.hello:main"
+
+[build-system]
+requires = ["uv_build>=0.11.19,<0.12.0"]
+build-backend = "uv_build"
