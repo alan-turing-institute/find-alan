@@ -148,9 +148,13 @@ def _run_mod_tile_upscale(config: DiffusionUpscaleConfig) -> Path:
     else:
         pipe.to(device)
 
-    if hasattr(pipe, "enable_vae_tiling"):
+    if hasattr(pipe.vae, "enable_tiling"):
+        pipe.vae.enable_tiling()
+    elif hasattr(pipe, "enable_vae_tiling"):
         pipe.enable_vae_tiling()
-    if hasattr(pipe, "enable_vae_slicing"):
+    if hasattr(pipe.vae, "enable_slicing"):
+        pipe.vae.enable_slicing()
+    elif hasattr(pipe, "enable_vae_slicing"):
         pipe.enable_vae_slicing()
 
     pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)

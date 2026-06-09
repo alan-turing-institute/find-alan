@@ -250,9 +250,13 @@ def run_multidiffusion_upscale(config: "DiffusionUpscaleConfig") -> Path:
     else:
         pipe.to(device)
 
-    if hasattr(pipe, "enable_vae_tiling"):
+    if hasattr(pipe.vae, "enable_tiling"):
+        pipe.vae.enable_tiling()
+    elif hasattr(pipe, "enable_vae_tiling"):
         pipe.enable_vae_tiling()
-    if hasattr(pipe, "enable_vae_slicing"):
+    if hasattr(pipe.vae, "enable_slicing"):
+        pipe.vae.enable_slicing()
+    elif hasattr(pipe, "enable_vae_slicing"):
         pipe.enable_vae_slicing()
 
     generator = None
@@ -285,8 +289,12 @@ def run_multidiffusion_upscale(config: "DiffusionUpscaleConfig") -> Path:
 
     with torch.no_grad():
         for step_index, timestep in enumerate(timesteps):
-            value = torch.zeros_like(latents)
-            count = torch.zeros_like(latents)
+            noise_value = torch.zeros_like(latents)
+            count = torch.zeros(
+                (latents.shape[0], 1, latents.shape[2], latents.shape[3]),
+                device=latents.device,
+                dtype=latents.dtype,
+            )
 
             for view in view_schedule[step_index]:
                 y0, y1 = view.y, view.bottom
@@ -338,23 +346,23 @@ def run_multidiffusion_upscale(config: "DiffusionUpscaleConfig") -> Path:
                     noise_uncond, noise_text = noise_pred.chunk(2)
                     noise_pred = noise_uncond + config.guidance_scale * (noise_text - noise_uncond)
 
-                previous_crop = pipe.scheduler.step(
-                    noise_pred,
-                    timestep,
-                    latent_crop,
-                    **extra_step_kwargs,
-                    return_dict=False,
-                )[0]
                 weight = _gaussian_weight(
-                    previous_crop.shape[-2],
-                    previous_crop.shape[-1],
+                    noise_pred.shape[-2],
+                    noise_pred.shape[-1],
                     config.tile_gaussian_sigma,
                     device=device,
-                    dtype=previous_crop.dtype,
+                    dtype=noise_pred.dtype,
                 )
-                value[:, :, y0:y1, x0:x1] += previous_crop * weight
+                noise_value[:, :, y0:y1, x0:x1] += noise_pred * weight
                 count[:, :, y0:y1, x0:x1] += weight
 
-            latents = torch.where(count > 0, value / count.clamp_min(1e-6), latents)
+            fused_noise = noise_value / count.clamp_min(1e-6)
+            latents = pipe.scheduler.step(
+                fused_noise,
+                timestep,
+                latents,
+                **extra_step_kwargs,
+                return_dict=False,
+            )[0]
 
     return _decode(pipe, latents, config.output_path)
