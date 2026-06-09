@@ -64,24 +64,34 @@ def _prepare_latents(
     device: str,
     generator: Any,
 ) -> Any:
-    try:
-        return pipe.prepare_latents(
-            init_image,
-            latent_timestep,
-            batch_size=1,
-            num_images_per_prompt=1,
-            dtype=dtype,
-            device=device,
-            generator=generator,
-        )
-    except TypeError:
-        pass
+    torch = __import__("torch")
+    _remove_accelerate_hook(pipe.vae)
 
-    latent_dist = pipe.vae.encode(init_image).latent_dist
-    latents = latent_dist.sample(generator=generator)
-    latents = latents * pipe.vae.config.scaling_factor
-    noise = _randn_like(latents, generator=generator)
-    return pipe.scheduler.add_noise(latents, noise, latent_timestep)
+    seed = generator.initial_seed() if generator is not None else None
+    cpu_generator = None
+    if seed is not None:
+        cpu_generator = torch.Generator(device="cpu").manual_seed(seed)
+
+    pipe.vae.to(device="cpu", dtype=torch.float32)
+    init_image = init_image.detach().to(device="cpu", dtype=torch.float32)
+    latent_timestep = latent_timestep.to(device="cpu")
+
+    with torch.no_grad():
+        latent_dist = pipe.vae.encode(init_image).latent_dist
+        latents = latent_dist.sample(generator=cpu_generator)
+        latents = latents * pipe.vae.config.scaling_factor
+        noise = torch.randn(
+            latents.shape,
+            generator=cpu_generator,
+            device="cpu",
+            dtype=latents.dtype,
+        )
+        latents = pipe.scheduler.add_noise(latents, noise, latent_timestep)
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    return latents.to(device=device, dtype=dtype)
 
 
 def _randn_like(tensor: Any, generator: Any) -> Any:
@@ -201,9 +211,45 @@ def _latent_views(
     )
 
 
+def _remove_accelerate_hook(module: Any) -> None:
+    try:
+        from accelerate.hooks import remove_hook_from_module
+    except ImportError:
+        return
+
+    remove_hook_from_module(module, recurse=True)
+
+
+def _offload_before_decode(pipe: Any, torch: Any) -> None:
+    if hasattr(pipe, "maybe_free_model_hooks"):
+        pipe.maybe_free_model_hooks()
+
+    for module_name in ("unet", "controlnet", "text_encoder", "text_encoder_2", "vae"):
+        module = getattr(pipe, module_name, None)
+        if module is not None:
+            _remove_accelerate_hook(module)
+            if hasattr(module, "to"):
+                module.to("cpu")
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 def _decode(pipe: Any, latents: Any, output_path: Path) -> Path:
-    image = pipe.vae.decode(latents / pipe.vae.config.scaling_factor, return_dict=False)[0]
-    image = pipe.image_processor.postprocess(image, output_type="pil")[0]
+    torch = __import__("torch")
+    _offload_before_decode(pipe, torch)
+
+    vae_latents = latents.detach().to(device="cpu", dtype=torch.float32)
+    del latents
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    pipe.vae.to(device="cpu", dtype=torch.float32)
+    vae_latents = vae_latents / pipe.vae.config.scaling_factor
+    with torch.no_grad():
+        image_tensor = pipe.vae.decode(vae_latents, return_dict=False)[0].detach()
+
+    image = pipe.image_processor.postprocess(image_tensor, output_type="pil")[0]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     image.save(output_path)
     return output_path

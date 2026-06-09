@@ -55,7 +55,9 @@ def _ceil_to_multiple(value: int, multiple: int) -> int:
     return ((value + multiple - 1) // multiple) * multiple
 
 
-def target_size(width: int, height: int, scale: float, multiple: int = 8) -> tuple[int, int]:
+def target_size(
+    width: int, height: int, scale: float, multiple: int = 8
+) -> tuple[int, int]:
     if scale <= 0:
         raise ValueError("scale must be positive")
 
@@ -97,7 +99,9 @@ def _tile_weighting_method(pipe: Any) -> str:
     return getattr(cosine, "value", "cosine")
 
 
-def _overlaps(pipe: Any, width: int, height: int, requested: int | None) -> tuple[int, int]:
+def _overlaps(
+    pipe: Any, width: int, height: int, requested: int | None
+) -> tuple[int, int]:
     if requested is not None:
         return requested, requested
 
@@ -122,8 +126,12 @@ def _run_mod_tile_upscale(config: DiffusionUpscaleConfig) -> Path:
 
     control_image = Image.open(config.input_path).convert("RGB")
     original_width, original_height = control_image.size
-    resized_width, resized_height = target_size(original_width, original_height, config.scale)
-    image = control_image.resize((resized_width, resized_height), Image.Resampling.LANCZOS)
+    resized_width, resized_height = target_size(
+        original_width, original_height, config.scale
+    )
+    image = control_image.resize(
+        (resized_width, resized_height), Image.Resampling.LANCZOS
+    )
 
     controlnet = ControlNetUnionModel.from_pretrained(
         config.controlnet_id,
@@ -131,7 +139,9 @@ def _run_mod_tile_upscale(config: DiffusionUpscaleConfig) -> Path:
         variant="fp16" if dtype is torch.float16 else None,
         use_safetensors=True,
     ).to(device=device)
-    vae = AutoencoderKL.from_pretrained(config.vae_id, torch_dtype=dtype, use_safetensors=True).to(device=device)
+    vae = AutoencoderKL.from_pretrained(
+        config.vae_id, torch_dtype=dtype, use_safetensors=True
+    ).to(device=device)
 
     pipe = DiffusionPipeline.from_pretrained(
         config.model_id,
@@ -143,7 +153,11 @@ def _run_mod_tile_upscale(config: DiffusionUpscaleConfig) -> Path:
         variant="fp16" if dtype is torch.float16 else None,
     )
 
-    if config.cpu_offload and device.startswith("cuda") and hasattr(pipe, "enable_model_cpu_offload"):
+    if (
+        config.cpu_offload
+        and device.startswith("cuda")
+        and hasattr(pipe, "enable_model_cpu_offload")
+    ):
         pipe.enable_model_cpu_offload()
     else:
         pipe.to(device)
@@ -163,7 +177,9 @@ def _run_mod_tile_upscale(config: DiffusionUpscaleConfig) -> Path:
     if config.seed is not None:
         generator = torch.Generator(device=device).manual_seed(config.seed)
 
-    normal_overlap, border_overlap = _overlaps(pipe, resized_width, resized_height, config.overlap)
+    normal_overlap, border_overlap = _overlaps(
+        pipe, resized_width, resized_height, config.overlap
+    )
 
     result = pipe(
         image=image,
