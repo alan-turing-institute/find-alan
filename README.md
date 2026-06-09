@@ -39,6 +39,23 @@ Run the starter tiled diffusion upscaler:
 uv run find-alan-upscale input.png output.png --scale 4
 ```
 
+Run the experimental per-step latent MultiDiffusion path:
+
+```sh
+uv run find-alan-upscale input.png output.png \
+  --engine multidiffusion \
+  --scale 4 \
+  --md-tile-size 1024 \
+  --md-overlap 512
+```
+
+Try stronger hallucinated detail with either:
+
+```sh
+uv run find-alan-upscale input.png output.png --engine multidiffusion --strong-denoise
+uv run find-alan-upscale input.png output.png --engine multidiffusion --denoising-strength 0.72
+```
+
 Add more runnable scripts by creating modules under `src/find_alan/scripts/`
 with a `main()` function, then adding them to `[project.scripts]` in
 `pyproject.toml`:
@@ -50,7 +67,7 @@ find-alan-upscale = "find_alan.scripts.upscale:main"
 find-alan-new-script = "find_alan.scripts.new_script:main"
 ```
 
-Try lower `--denoising-strength` values when preserving the original scene matters. Use a separate masked inpaint pass for the final hidden character/face corrections.
+Use a separate masked inpaint pass for the final hidden character/face corrections.
 
 Build the package:
 
