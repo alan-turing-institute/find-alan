@@ -1,13 +1,25 @@
 [project]
 name = "find-alan"
 version = "0.1.0"
-description = "Runnable scripts package for find-alan."
+description = "Runnable scripts for find-alan."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
 
+[project.optional-dependencies]
+ml = [
+    "accelerate>=1.13.0",
+    "diffusers[torch]>=0.38.0",
+    "numpy>=2.0",
+    "opencv-python-headless>=4.10",
+    "pillow>=11.0",
+    "safetensors>=0.5",
+    "transformers>=4.52",
+]
+
 [project.scripts]
-find-alan = "find_alan.scripts.hello:main"
+find-alan-crop-plan = "find_alan.scripts.crop_plan:main"
+find-alan-upscale = "find_alan.scripts.upscale:main"
 
 [build-system]
 requires = ["uv_build>=0.11.19,<0.12.0"]
