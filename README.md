@@ -12,7 +12,7 @@ uv sync
 
 ## Inpainting
 
-Insert a figure into a crowd scene using IP-Adapter + Stable Diffusion inpainting.
+Insert a figure into a crowd scene using IP-Adapter + FLUX.1-Fill inpainting.
 
 ### Step 1 — Generate example images
 
@@ -26,7 +26,7 @@ Replace these with real images for meaningful results.
 
 ### Step 2 — Run inpainting
 
-Models (~5 GB) are downloaded from Hugging Face on first run.
+Models (~24 GB) are downloaded from Hugging Face on first run. Requires 24 GB+ VRAM or unified memory (Apple Silicon).
 
 ```sh
 uv run find-alan-inpaint \

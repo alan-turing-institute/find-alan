@@ -1,4 +1,4 @@
-"""CLI: inpaint a figure into a scene using IP-Adapter + SD inpainting."""
+"""CLI: inpaint a figure into a scene using IP-Adapter + FLUX.1-Fill."""
 
 from __future__ import annotations
 
@@ -8,10 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from find_alan.inpaint import (
-    DEFAULT_NEGATIVE_PROMPT,
     DEFAULT_PROMPT,
-    IP_ADAPTER_WEIGHTS_BASE,
-    IP_ADAPTER_WEIGHTS_PLUS,
     load_pipeline,
     run_inpainting,
 )
@@ -23,7 +20,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="find-alan-inpaint",
         description=(
             "Inpaint a figure into a scene using IP-Adapter +"
-            " SD inpainting.\n\n"
+            " FLUX.1-Fill.\n\n"
             "Example (bounding box):\n"
             "  find-alan-inpaint --scene crowd.png --figure person.png"
             " \\\n"
@@ -64,35 +61,22 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p.add_argument("--prompt", default=DEFAULT_PROMPT, metavar="TEXT")
     p.add_argument(
-        "--negative-prompt", default=DEFAULT_NEGATIVE_PROMPT,
-        metavar="TEXT",
-    )
-    p.add_argument(
         "--ip-scale",
         type=float,
-        default=0.7,
+        default=0.6,
         metavar="FLOAT",
         help=(
             "IP-Adapter influence (0=ignore reference, 1=copy reference)."
-            " Default: 0.7."
-        ),
-    )
-    p.add_argument(
-        "--ip-adapter-weights",
-        default=IP_ADAPTER_WEIGHTS_PLUS,
-        choices=[IP_ADAPTER_WEIGHTS_PLUS, IP_ADAPTER_WEIGHTS_BASE],
-        help=(
-            f"'{IP_ADAPTER_WEIGHTS_PLUS}' (default) uses a stronger image"
-            " encoder and is more faithful to the reference."
-            f" '{IP_ADAPTER_WEIGHTS_BASE}' gives more creative freedom."
+            " Default: 0.6."
         ),
     )
     p.add_argument(
         "--steps", type=int, default=50, metavar="INT",
-        help="Inference steps.",
+        help="Inference steps. Default: 50.",
     )
     p.add_argument(
-        "--guidance-scale", type=float, default=7.5, metavar="FLOAT",
+        "--guidance-scale", type=float, default=30.0, metavar="FLOAT",
+        help="CFG scale. FLUX.1-Fill works well at 30. Default: 30.0.",
     )
     p.add_argument(
         "--seed", type=int, default=None, metavar="INT",
@@ -118,11 +102,8 @@ def main(argv: list[str] | None = None) -> int:
         image_size=scene.size,
     )
 
-    print("Loading pipeline (models downloaded on first run, ~5 GB)...")
-    pipe = load_pipeline(
-        device=args.device,
-        ip_adapter_weights=args.ip_adapter_weights,
-    )
+    print("Loading pipeline (FLUX.1-Fill ~24 GB, downloaded on first run)...")
+    pipe = load_pipeline(device=args.device)
 
     print("Running inpainting...")
     result = run_inpainting(
@@ -131,7 +112,6 @@ def main(argv: list[str] | None = None) -> int:
         figure=figure,
         mask=mask,
         prompt=args.prompt,
-        negative_prompt=args.negative_prompt,
         ip_adapter_scale=args.ip_scale,
         num_inference_steps=args.steps,
         guidance_scale=args.guidance_scale,
