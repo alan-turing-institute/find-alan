@@ -1,6 +1,6 @@
 import gradio as gr
 
-from find_alan.pipeline import generate_image
+from find_alan.pipeline_stub import generate_image
 
 
 def run_pipeline(prompt: str):
@@ -10,7 +10,8 @@ def run_pipeline(prompt: str):
 
 
 def main():
-    with gr.Blocks(title="find-alan") as demo:
+    with gr.Blocks(title="find-alan", css="footer { display: none !important; }") as demo:
+        gr.Markdown("# Find Alan")
         image_output = gr.Image(label="Output", show_label=False)
         prompt_input = gr.Textbox(
             placeholder="Enter a prompt...",
