@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -52,12 +53,14 @@ def _make_image(prompt: str, index: int, timestamp: str) -> str:
 
 
 def generate_image(prompt: str) -> list[str]:
+    time.sleep(3)
     GENERATE_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return [_make_image(prompt, i, timestamp) for i in range(4)]
 
 
 def improve_image(image_path: str) -> str:
+    time.sleep(3)
     IMPROVE_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     src = Image.open(image_path)
