@@ -12,7 +12,7 @@ def run_pipeline(prompt: str):
 def main():
     with gr.Blocks(title="find-alan", css="footer { display: none !important; }") as demo:
         gr.Markdown("# Find Alan")
-        image_output = gr.Image(label="Output", show_label=False)
+        image_output = gr.Gallery(columns=2, rows=2, show_label=False, object_fit="contain")
         prompt_input = gr.Textbox(
             placeholder="Enter a prompt...",
             label="Prompt",

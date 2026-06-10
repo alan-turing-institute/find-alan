@@ -1,20 +1,26 @@
 from datetime import datetime
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 OUTPUTS_DIR = Path("outputs")
 
+COLORS = [
+    (70, 90, 120),
+    (90, 70, 120),
+    (70, 120, 90),
+    (120, 90, 70),
+]
 
-def generate_image(prompt: str) -> str:
-    OUTPUTS_DIR.mkdir(exist_ok=True)
 
-    img = Image.new("RGB", (512, 512), color=(70, 90, 120))
+def _make_image(prompt: str, index: int, timestamp: str) -> str:
+    img = Image.new("RGB", (512, 512), color=COLORS[index])
     draw = ImageDraw.Draw(img)
 
+    label = f"[{index + 1}/4] {prompt}"
     margin = 20
     max_width = 512 - 2 * margin
-    words = prompt.split()
+    words = label.split()
     lines = []
     current = ""
     for word in words:
@@ -36,6 +42,12 @@ def generate_image(prompt: str) -> str:
         draw.text(((512 - w) / 2, y), line, fill=(200, 220, 255))
         y += line_height
 
-    filename = OUTPUTS_DIR / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+    filename = OUTPUTS_DIR / f"{timestamp}_{index + 1}.png"
     img.save(filename)
     return str(filename)
+
+
+def generate_image(prompt: str) -> list[str]:
+    OUTPUTS_DIR.mkdir(exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return [_make_image(prompt, i, timestamp) for i in range(4)]
