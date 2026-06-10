@@ -17,8 +17,10 @@ DEFAULT_NEGATIVE_PROMPT = (
 )
 DEFAULT_MOD_MODEL_ID = "SG161222/RealVisXL_V5.0"
 DEFAULT_FLUX2_MODEL_ID = "black-forest-labs/FLUX.2-dev"
+DEFAULT_SD3_MODEL_ID = "stabilityai/stable-diffusion-3.5-large"
 DEFAULT_MOD_CONTROLNET_ID = "OzzyGT/controlnet-union-promax-sdxl-1.0"
 DEFAULT_MULTIDIFFUSION_CONTROLNET_ID = "xinsir/controlnet-tile-sdxl-1.0"
+DEFAULT_SD3_CONTROLNET_ID = "InstantX/SD3-Controlnet-Tile"
 
 
 class MissingMLDependencies(RuntimeError):
@@ -57,6 +59,10 @@ class DiffusionUpscaleConfig:
     flux2_pipeline: str = "auto"
     flux2_max_sequence_length: int = 512
     flux2_caption_upsample_temperature: float | None = None
+    sd3_tile_size: int = 1024
+    sd3_overlap: int = 256
+    sd3_jitter: int | None = None
+    sd3_max_sequence_length: int = 256
 
 
 def _ceil_to_multiple(value: int, multiple: int) -> int:
@@ -232,5 +238,9 @@ def run_diffusion_upscale(config: DiffusionUpscaleConfig) -> Path:
         from .experimental_flux2_multidiffusion import run_flux2_multidiffusion_upscale
 
         return run_flux2_multidiffusion_upscale(config)
+    if config.engine == "sd3-tile":
+        from .experimental_sd3_tile import run_sd3_tile_upscale
+
+        return run_sd3_tile_upscale(config)
 
     raise ValueError(f"Unknown upscale engine: {config.engine}")

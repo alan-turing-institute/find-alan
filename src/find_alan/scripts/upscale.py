@@ -12,6 +12,8 @@ from find_alan.upscale import (
     DEFAULT_MOD_MODEL_ID,
     DEFAULT_MOD_CONTROLNET_ID,
     DEFAULT_MULTIDIFFUSION_CONTROLNET_ID,
+    DEFAULT_SD3_MODEL_ID,
+    DEFAULT_SD3_CONTROLNET_ID,
     DEFAULT_NEGATIVE_PROMPT,
     DEFAULT_PROMPT,
     DiffusionUpscaleConfig,
@@ -29,7 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("output", type=Path)
     parser.add_argument(
         "--engine",
-        choices=("mod-tile", "multidiffusion", "flux2-tile", "flux2-multidiffusion"),
+        choices=("mod-tile", "multidiffusion", "flux2-tile", "flux2-multidiffusion", "sd3-tile"),
         default="mod-tile",
     )
     parser.add_argument("--scale", type=float, default=4.0)
@@ -70,6 +72,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=None,
     )
+    parser.add_argument("--sd3-tile-size", type=int, default=1024)
+    parser.add_argument("--sd3-overlap", type=int, default=256)
+    parser.add_argument("--sd3-jitter", type=int, default=None)
+    parser.add_argument("--sd3-max-sequence-length", type=int, default=256)
     parser.add_argument("--no-cpu-offload", action="store_true")
     return parser
 
@@ -79,6 +85,8 @@ def _model_id(args: argparse.Namespace) -> str:
         return args.model_id
     if args.engine in {"flux2-tile", "flux2-multidiffusion"}:
         return DEFAULT_FLUX2_MODEL_ID
+    if args.engine == "sd3-tile":
+        return DEFAULT_SD3_MODEL_ID
     return DEFAULT_MOD_MODEL_ID
 
 
@@ -87,6 +95,8 @@ def _controlnet_id(args: argparse.Namespace) -> str:
         return args.controlnet_id
     if args.engine == "multidiffusion":
         return DEFAULT_MULTIDIFFUSION_CONTROLNET_ID
+    if args.engine == "sd3-tile":
+        return DEFAULT_SD3_CONTROLNET_ID
     return DEFAULT_MOD_CONTROLNET_ID
 
 
@@ -132,6 +142,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         flux2_pipeline=args.flux2_pipeline,
         flux2_max_sequence_length=args.flux2_max_sequence_length,
         flux2_caption_upsample_temperature=args.flux2_caption_upsample_temperature,
+        sd3_tile_size=args.sd3_tile_size,
+        sd3_overlap=args.sd3_overlap,
+        sd3_jitter=args.sd3_jitter,
+        sd3_max_sequence_length=args.sd3_max_sequence_length,
     )
 
     try:
