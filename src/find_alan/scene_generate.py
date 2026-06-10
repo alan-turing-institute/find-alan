@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import logging
 import random
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -224,13 +225,13 @@ def _require_ml() -> Any:
 
 
 def _load_flux_pipeline(model_id: str, device_map: str | None, torch_dtype: Any) -> Any:
-    from diffusers import FluxPipeline  # noqa: PLC0415
+    from diffusers import AutoPipelineForText2Image  # noqa: PLC0415
 
-    logger.info("Loading Flux pipeline from %r …", model_id)
+    logger.info("Loading pipeline from %r …", model_id)
     kwargs: dict[str, Any] = {"torch_dtype": torch_dtype}
     if device_map:
         kwargs["device_map"] = device_map
-    pipe = FluxPipeline.from_pretrained(model_id, **kwargs)
+    pipe = AutoPipelineForText2Image.from_pretrained(model_id, **kwargs)
     return pipe
 
 
@@ -344,6 +345,7 @@ class SceneGenerationConfig:
     llm_base_url: str | None = None
     llm_model: str = DEFAULT_LLM_MODEL
     llm_timeout: float = 60.0
+    tile_prompts: tuple[str, ...] | None = None  # pre-resolved; skips LLM/fallback if set
 
 
 @dataclass(frozen=True)
@@ -362,14 +364,22 @@ class SceneGenerationResult:
 # ---------------------------------------------------------------------------
 
 
-def generate_scene(config: SceneGenerationConfig) -> SceneGenerationResult:
-    """Run the full tiled generation pipeline and return a result object.
+def generate_scene_stream(
+    config: SceneGenerationConfig,
+) -> Iterator[tuple[int, Path] | tuple[None, SceneGenerationResult]]:
+    """Generate a tiled scene, yielding progress after each tile.
 
-    This is the primary library API.  Import and call it directly from
-    other pipeline stages::
+    Yields ``(tile_index, tile_path)`` each time a tile is saved, then
+    ``(None, SceneGenerationResult)`` as the final item when stitching is done.
+    ``tile_path`` is only set when ``config.save_tiles`` is True.
 
-        result = generate_scene(cfg)
-        next_stage(result.final_path)
+    Typical use::
+
+        for idx, value in generate_scene_stream(cfg):
+            if idx is None:
+                result = value          # SceneGenerationResult
+            else:
+                print(f"tile {idx} → {value}")
     """
     torch = _require_ml()
 
@@ -379,14 +389,19 @@ def generate_scene(config: SceneGenerationConfig) -> SceneGenerationResult:
     config.output_dir.mkdir(parents=True, exist_ok=True)
 
     # ── 1. Resolve tile prompts ──────────────────────────────────────────────
-    raw_prompts, prompt_source = resolve_tile_prompts(
-        theme=config.theme,
-        cols=config.cols,
-        rows=config.rows,
-        llm_base_url=config.llm_base_url,
-        llm_model=config.llm_model,
-        llm_timeout=config.llm_timeout,
-    )
+    if config.tile_prompts is not None:
+        raw_prompts = list(config.tile_prompts)
+        prompt_source = "preset"
+        logger.info("Using %d preset tile prompts", len(raw_prompts))
+    else:
+        raw_prompts, prompt_source = resolve_tile_prompts(
+            theme=config.theme,
+            cols=config.cols,
+            rows=config.rows,
+            llm_base_url=config.llm_base_url,
+            llm_model=config.llm_model,
+            llm_timeout=config.llm_timeout,
+        )
     full_prompts = [f"{p}, {STYLE_SUFFIX}" for p in raw_prompts]
 
     logger.info(
@@ -427,11 +442,13 @@ def generate_scene(config: SceneGenerationConfig) -> SceneGenerationResult:
             generator_device=config.generator_device,
         )
         tiles.append(tile)
+        tile_path: Path | None = None
         if config.save_tiles:
             tile_path = config.output_dir / f"tile_{i + 1:02d}_{position}.png"
             tile.save(tile_path)
             tile_paths.append(tile_path)
             logger.info("  Saved tile → %s", tile_path)
+        yield i, tile_path  # type: ignore[misc]
 
     # ── 4. Stitch ────────────────────────────────────────────────────────────
     logger.info(
@@ -446,10 +463,25 @@ def generate_scene(config: SceneGenerationConfig) -> SceneGenerationResult:
     final_image.save(final_path)
     logger.info("Final image saved → %s", final_path)
 
-    return SceneGenerationResult(
+    yield None, SceneGenerationResult(  # type: ignore[misc]
         output_dir=config.output_dir,
         final_path=final_path,
         tile_paths=tuple(tile_paths),
         prompt_source=prompt_source,
         tile_prompts=tuple(raw_prompts),
     )
+
+
+def generate_scene(config: SceneGenerationConfig) -> SceneGenerationResult:
+    """Run the full tiled generation pipeline and return a result object.
+
+    This is the primary library API for non-streaming use (e.g. CLI scripts).
+    For GUIs or other contexts that want per-tile progress, use
+    :func:`generate_scene_stream` instead.
+    """
+    result: SceneGenerationResult | None = None
+    for idx, value in generate_scene_stream(config):
+        if idx is None:
+            result = value  # type: ignore[assignment]
+    assert result is not None
+    return result
