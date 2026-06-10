@@ -23,13 +23,13 @@ from find_alan.upscale import (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="find-alan-upscale",
-        description="Upscale an image with tiled diffusion, MultiDiffusion, or Flux.2 tiles.",
+        description="Upscale an image with tiled diffusion, MultiDiffusion, Flux.2 tiles, or Flux.2 MultiDiffusion.",
     )
     parser.add_argument("input", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument(
         "--engine",
-        choices=("mod-tile", "multidiffusion", "flux2-tile"),
+        choices=("mod-tile", "multidiffusion", "flux2-tile", "flux2-multidiffusion"),
         default="mod-tile",
     )
     parser.add_argument("--scale", type=float, default=4.0)
@@ -77,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _model_id(args: argparse.Namespace) -> str:
     if args.model_id:
         return args.model_id
-    if args.engine == "flux2-tile":
+    if args.engine in {"flux2-tile", "flux2-multidiffusion"}:
         return DEFAULT_FLUX2_MODEL_ID
     return DEFAULT_MOD_MODEL_ID
 

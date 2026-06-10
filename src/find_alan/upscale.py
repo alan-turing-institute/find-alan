@@ -228,5 +228,9 @@ def run_diffusion_upscale(config: DiffusionUpscaleConfig) -> Path:
         from .experimental_flux2_tile import run_flux2_tile_upscale
 
         return run_flux2_tile_upscale(config)
+    if config.engine == "flux2-multidiffusion":
+        from .experimental_flux2_multidiffusion import run_flux2_multidiffusion_upscale
+
+        return run_flux2_multidiffusion_upscale(config)
 
     raise ValueError(f"Unknown upscale engine: {config.engine}")
