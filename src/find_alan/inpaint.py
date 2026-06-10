@@ -34,6 +34,17 @@ def _auto_device() -> str:
     return "cpu"
 
 
+def _pad_to_square(img: Image.Image) -> Image.Image:
+    """Pad image to square with white so the processor doesn't squish it."""
+    w, h = img.size
+    if w == h:
+        return img
+    size = max(w, h)
+    out = Image.new("RGB", (size, size), (255, 255, 255))
+    out.paste(img, ((size - w) // 2, (size - h) // 2))
+    return out
+
+
 @dataclass
 class Pipelines:
     prior: FluxPriorReduxPipeline
@@ -77,7 +88,7 @@ def _combine_redux_and_text(
     conditions on both appearance (Redux) and layout/sizing instructions
     (text). The Redux pooled embedding is used for CLIP conditioning.
     """
-    prior_output = pipelines.prior(figure.convert("RGB"))
+    prior_output = pipelines.prior(_pad_to_square(figure.convert("RGB")))
 
     if prompt:
         text_embeds, _, _ = pipelines.fill.encode_prompt(
