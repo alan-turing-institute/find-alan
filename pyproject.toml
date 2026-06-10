@@ -21,6 +21,7 @@ dependencies = [
 [project.scripts]
 find-alan = "find_alan.scripts.hello:main"
 find-alan-inpaint = "find_alan.scripts.inpaint:main"
+find-alan-insert = "find_alan.scripts.insert:main"
 find-alan-prepare-examples = "find_alan.scripts.prepare_examples:main"
 
 [build-system]
