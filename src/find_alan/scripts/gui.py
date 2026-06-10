@@ -1,3 +1,5 @@
+import os
+
 import gradio as gr
 from PIL import Image
 
@@ -24,7 +26,7 @@ def main():
         generate_btn.click(fn=run_pipeline, inputs=prompt_input, outputs=image_output)
         prompt_input.submit(fn=run_pipeline, inputs=prompt_input, outputs=image_output)
 
-    demo.launch()
+    demo.launch(server_port=int(os.environ.get("GUI_PORT", 7860)))
 
 
 if __name__ == "__main__":
