@@ -16,12 +16,14 @@ dependencies = [
     "numpy>=1.26.0",
     "safetensors>=0.4.2",
     "huggingface-hub>=0.21.0",
+    "ultralytics>=8.0.0",
 ]
 
 [project.scripts]
 find-alan = "find_alan.scripts.hello:main"
 find-alan-inpaint = "find_alan.scripts.inpaint:main"
 find-alan-insert = "find_alan.scripts.insert:main"
+find-alan-insert-detected = "find_alan.scripts.insert_detected:main"
 find-alan-prepare-examples = "find_alan.scripts.prepare_examples:main"
 
 [build-system]
