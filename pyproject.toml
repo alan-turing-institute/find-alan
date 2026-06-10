@@ -19,6 +19,15 @@ ml = [
 [project.scripts]
 find-alan = "find_alan.scripts.hello:main"
 find-alan-refine = "find_alan.scripts.refine:main"
+    "opencv-python-headless>=4.10",
+    "pillow>=11.0",
+    "safetensors>=0.5",
+    "transformers>=4.52",
+    "ipykernel>=6.0",
+    "torchvision>=0.24",
+]
+find-alan-crop-plan = "find_alan.scripts.crop_plan:main"
+find-alan-upscale = "find_alan.scripts.upscale:main"
 
 [build-system]
 requires = ["uv_build>=0.11.19,<0.12.0"]
