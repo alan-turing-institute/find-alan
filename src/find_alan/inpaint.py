@@ -13,8 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import torch
-from PIL import Image
 from diffusers import FluxFillPipeline, FluxPriorReduxPipeline
+from PIL import Image
 
 _REDUX_MODEL = "black-forest-labs/FLUX.1-Redux-dev"
 _FILL_MODEL = "black-forest-labs/FLUX.1-Fill-dev"
@@ -66,12 +66,18 @@ def load_pipeline(device: str | None = None) -> Pipelines:
     prior = FluxPriorReduxPipeline.from_pretrained(
         _REDUX_MODEL,
         torch_dtype=torch.bfloat16,
-    ).to(device)
+    )
+    # SigLIP's probe parameter is incompatible with sequential offload's meta
+    # device hooking, so use model-level offload for the smaller prior pipeline.
+    prior.enable_model_cpu_offload()
 
     fill = FluxFillPipeline.from_pretrained(
         _FILL_MODEL,
         torch_dtype=torch.bfloat16,
-    ).to(device)
+    )
+    # Sequential offload streams one layer at a time to minimise peak VRAM for
+    # the large (~23 GB) fill transformer.
+    fill.enable_sequential_cpu_offload()
 
     return Pipelines(prior=prior, fill=fill)
 
@@ -123,7 +129,7 @@ def run_inpainting(
 
     Returns an image at the same size as *scene*.
     """
-    device = pipelines.fill.device
+    device = pipelines.fill._execution_device
 
     generator = None
     if seed is not None:

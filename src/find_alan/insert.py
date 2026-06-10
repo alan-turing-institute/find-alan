@@ -8,10 +8,10 @@ and the scene context.
 from __future__ import annotations
 
 import torch
-from PIL import Image
 from diffusers.pipelines.flux2.pipeline_flux2_klein_inpaint import (
     Flux2KleinInpaintPipeline,
 )
+from PIL import Image
 
 _KLEIN_MODEL = "black-forest-labs/FLUX.2-klein-4B"
 
@@ -56,7 +56,8 @@ def load_pipeline(device: str | None = None) -> Flux2KleinInpaintPipeline:
     pipe = Flux2KleinInpaintPipeline.from_pretrained(
         _KLEIN_MODEL,
         torch_dtype=torch.bfloat16,
-    ).to(device)
+    )
+    pipe.enable_sequential_cpu_offload()
     return pipe
 
 
@@ -80,7 +81,7 @@ def run_insertion(
     generator = None
     if seed is not None:
         generator = torch.Generator(
-            device=pipe.device.type
+            device=pipe._execution_device
         ).manual_seed(seed)
 
     w, h = scene.size
