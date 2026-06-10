@@ -62,6 +62,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--flux2-overlap", type=int, default=256)
     parser.add_argument("--flux2-jitter", type=int, default=None)
     parser.add_argument(
+        "--flux2-md-fusion",
+        choices=("weighted", "center", "annealed"),
+        default="weighted",
+        help="Fusion mode for flux2-multidiffusion overlapping latent views.",
+    )
+    parser.add_argument(
+        "--flux2-md-anneal-fraction",
+        type=float,
+        default=0.35,
+        help="Final fraction of steps that use center fusion when --flux2-md-fusion=annealed.",
+    )
+    parser.add_argument(
         "--flux2-pipeline",
         choices=("auto", "dev", "klein", "klein-kv"),
         default="auto",
@@ -139,6 +151,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         flux2_tile_size=args.flux2_tile_size,
         flux2_overlap=args.flux2_overlap,
         flux2_jitter=args.flux2_jitter,
+        flux2_md_fusion=args.flux2_md_fusion,
+        flux2_md_anneal_fraction=args.flux2_md_anneal_fraction,
         flux2_pipeline=args.flux2_pipeline,
         flux2_max_sequence_length=args.flux2_max_sequence_length,
         flux2_caption_upsample_temperature=args.flux2_caption_upsample_temperature,
