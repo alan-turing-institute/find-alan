@@ -1,4 +1,5 @@
 import gradio as gr
+from PIL import Image
 
 from find_alan.pipeline_stub import generate_image
 
@@ -6,7 +7,8 @@ from find_alan.pipeline_stub import generate_image
 def run_pipeline(prompt: str):
     if not prompt or not prompt.strip():
         return None
-    return generate_image(prompt.strip())
+    paths = generate_image(prompt.strip())
+    return [Image.open(p) for p in paths]
 
 
 def main():
