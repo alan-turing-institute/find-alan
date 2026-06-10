@@ -17,6 +17,12 @@ dependencies = [
     "safetensors>=0.4.2",
     "huggingface-hub>=0.21.0",
     "ultralytics>=8.0.0",
+    "opencv-python-headless>=4.10",
+    "pillow>=11.0",
+    "safetensors>=0.5",
+    "transformers>=4.52",
+    "ipykernel>=6.0",
+    # "torchvision>=0.24",
 ]
 
 [project.optional-dependencies]
@@ -36,13 +42,6 @@ find-alan-insert = "find_alan.scripts.insert:main"
 find-alan-insert-detected = "find_alan.scripts.insert_detected:main"
 find-alan-prepare-examples = "find_alan.scripts.prepare_examples:main"
 find-alan-refine = "find_alan.scripts.refine:main"
-    "opencv-python-headless>=4.10",
-    "pillow>=11.0",
-    "safetensors>=0.5",
-    "transformers>=4.52",
-    "ipykernel>=6.0",
-    "torchvision>=0.24",
-]
 find-alan-crop-plan = "find_alan.scripts.crop_plan:main"
 find-alan-upscale = "find_alan.scripts.upscale:main"
 
