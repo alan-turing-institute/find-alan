@@ -85,9 +85,15 @@ def run_insertion(
 
     w, h = scene.size
 
+    # The inpaint pipeline requires a mask. An all-white mask tells it to
+    # repaint the entire image; `strength` controls how far the result can
+    # drift from the original scene (lower = preserve more background).
+    full_mask = Image.new("L", (w, h), 255)
+
     result = pipe(
         prompt=prompt,
         image=scene.convert("RGB"),
+        mask_image=full_mask,
         image_reference=_pad_to_square(figure.convert("RGB")),
         height=h,
         width=w,
