@@ -94,10 +94,18 @@ def run_insertion(
     if mask is None:
         mask = Image.new("L", (w, h), 255)
 
+    # Keep the caller-supplied mask for compositing; pass a full mask to the
+    # pipeline so FLUX.2-Klein can generate the whole scene with the reference
+    # figure placed naturally.  We then composite only the caller's region onto
+    # the original, which (a) anchors the insertion to the detected bbox and
+    # (b) preserves the background pixel-perfectly outside that region.
+    caller_mask = mask
+    full_mask = Image.new("L", (w, h), 255)
+
     result = pipe(
         prompt=prompt,
         image=scene.convert("RGB"),
-        mask_image=mask.convert("L").resize((w, h)),
+        mask_image=full_mask,
         image_reference=_pad_to_square(figure.convert("RGB")),
         height=h,
         width=w,
@@ -107,4 +115,6 @@ def run_insertion(
         generator=generator,
     ).images[0]
 
-    return result
+    result_full = result.resize((w, h), Image.LANCZOS)
+    composite_mask = caller_mask.convert("L").resize((w, h), Image.LANCZOS)
+    return Image.composite(result_full, scene.convert("RGB"), composite_mask)
