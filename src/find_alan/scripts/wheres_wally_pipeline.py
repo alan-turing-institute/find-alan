@@ -201,7 +201,7 @@ def outpaint_tile(pipe, inpaint_pipe, prev_tile, prompt: str, seed: int, width: 
             height=height,
             num_inference_steps=steps,
             guidance_scale=cfg,
-            strength=0.85,
+            strength=0.4,
             generator=generator,
         )
     elif inpaint_pipe is not None:
@@ -242,7 +242,7 @@ def fix_seams(stitched, tiles: list, cols: int, rows: int, tile_w: int, tile_h: 
 
     # Fix vertical seams (between columns)
     for col in range(1, cols):
-        x = col * step_x  # seam centre
+        x = col * step_x + overlap // 2  # true seam centre
         x0 = max(0, x - overlap)
         x1 = min(stitched.width, x + overlap)
 
@@ -251,12 +251,12 @@ def fix_seams(stitched, tiles: list, cols: int, rows: int, tile_w: int, tile_h: 
         strip_w = x1 - x0
         strip_h = stitched.height
 
-        # Mask: inpaint only the centre of the seam
+        # Mask: inpaint only a narrow strip at the centre seam
+        seam_half = max(32, overlap // 8)
         mask = Image.new("L", (strip_w, strip_h), 0)
         mask_arr = np.array(mask)
-        centre_start = max(0, overlap - overlap // 2)
-        centre_end   = min(strip_w, overlap + overlap // 2)
-        mask_arr[:, centre_start:centre_end] = 255
+        centre = strip_w // 2
+        mask_arr[:, centre - seam_half:centre + seam_half] = 255
         mask = Image.fromarray(mask_arr)
 
         generator = torch.Generator().manual_seed(seed + col)
@@ -269,7 +269,7 @@ def fix_seams(stitched, tiles: list, cols: int, rows: int, tile_w: int, tile_h: 
             height=strip_h,
             num_inference_steps=steps,
             guidance_scale=fill_cfg,
-            strength=0.85,
+            strength=0.4,
             generator=generator,
         ).images[0]
 
@@ -279,7 +279,7 @@ def fix_seams(stitched, tiles: list, cols: int, rows: int, tile_w: int, tile_h: 
 
     # Fix horizontal seams (between rows)
     for row in range(1, rows):
-        y = row * step_y
+        y = row * step_y + overlap // 2  # true seam centre
         y0 = max(0, y - overlap)
         y1 = min(stitched.height, y + overlap)
 
@@ -287,11 +287,11 @@ def fix_seams(stitched, tiles: list, cols: int, rows: int, tile_w: int, tile_h: 
         strip_w = stitched.width
         strip_h = y1 - y0
 
+        seam_half = max(32, overlap // 8)
         mask = Image.new("L", (strip_w, strip_h), 0)
         mask_arr = np.array(mask)
-        centre_start = max(0, overlap - overlap // 2)
-        centre_end   = min(strip_h, overlap + overlap // 2)
-        mask_arr[centre_start:centre_end, :] = 255
+        centre = strip_h // 2
+        mask_arr[centre - seam_half:centre + seam_half, :] = 255
         mask = Image.fromarray(mask_arr)
 
         generator = torch.Generator().manual_seed(seed + cols + row)
@@ -304,7 +304,7 @@ def fix_seams(stitched, tiles: list, cols: int, rows: int, tile_w: int, tile_h: 
             height=strip_h,
             num_inference_steps=steps,
             guidance_scale=fill_cfg,
-            strength=0.85,
+            strength=0.4,
             generator=generator,
         ).images[0]
 
@@ -313,6 +313,32 @@ def fix_seams(stitched, tiles: list, cols: int, rows: int, tile_w: int, tile_h: 
         result.paste(out, (0, y0))
 
     return result
+
+
+def stitch_tiles_hard(tiles: list, cols: int, rows: int, tile_w: int, tile_h: int, overlap: int = 0):
+    """Stitch tiles with no blending — just place each tile at the correct offset.
+    Used when tiles were generated with edge context so borders already match."""
+    from PIL import Image
+
+    step_x = tile_w - overlap
+    step_y = tile_h - overlap
+    final_w = tile_w + step_x * (cols - 1)
+    final_h = tile_h + step_y * (rows - 1)
+    canvas = Image.new("RGB", (final_w, final_h))
+
+    for idx, tile in enumerate(tiles):
+        row = idx // cols
+        col = idx % cols
+        x = col * step_x
+        y = row * step_y
+        # For tiles after the first, skip the left overlap strip (it's a copy of prev tile's right edge)
+        if col > 0:
+            tile = tile.crop((overlap, 0, tile_w, tile_h))
+            canvas.paste(tile, (x + overlap, y))
+        else:
+            canvas.paste(tile, (x, y))
+
+    return canvas
 
 
 def stitch_tiles(tiles: list, cols: int, rows: int, tile_w: int, tile_h: int, overlap: int = 128):
@@ -416,7 +442,8 @@ def run_pipeline(
         cols, rows = (int(x) for x in tiles.lower().split("x"))
         total = cols * rows
         print(f"Tiles   : {cols}x{rows} = {total} tiles")
-        pipe = load_pipeline(checkpoint, lora, device, lora_strength)
+        pipe = load_pipeline(checkpoint, lora, device, lora_strength, inpaint=False)
+        inpaint_pipe = load_pipeline(checkpoint, lora, device, lora_strength, inpaint=True)
         generated = []
         tile_variations = [
             "left section", "centre-left section", "centre section",
@@ -424,20 +451,52 @@ def run_pipeline(
             "top-left corner", "top-right corner", "bottom-left corner",
         ]
         for i in range(total):
-            variation = tile_variations[i % len(tile_variations)]
-            tile_prompt = f"{full_prompt}, {variation} of the scene"
             tile_seed = seed + i
-            print(f"  Generating tile {i+1}/{total} ({variation}, seed {tile_seed}) …")
-            tile = generate_tile(pipe, tile_prompt, tile_seed, width, height, steps, cfg, device)
+            if i == 0:
+                # First tile — generate normally
+                print(f"  Generating tile 1/{total} (seed {tile_seed}) …")
+                tile = generate_tile(pipe, full_prompt, tile_seed, width, height, steps, cfg, device)
+            else:
+                # Subsequent tiles — outpaint from previous tile's right edge using inpainting
+                from PIL import Image
+                import numpy as np
+                import torch
+                prev = generated[-1]
+                edge = prev.crop((prev.width - overlap, 0, prev.width, prev.height))
+                # Canvas: real edge on left, black on right (model fills the black area)
+                canvas = Image.new("RGB", (width, height), (0, 0, 0))
+                canvas.paste(edge, (0, 0))
+                # Mask: 0 = keep edge, 255 = generate new content
+                mask = Image.new("L", (width, height), 255)
+                mask_arr = np.array(mask)
+                mask_arr[:, :overlap] = 0
+                mask = Image.fromarray(mask_arr)
+                generator = torch.Generator(device=device).manual_seed(tile_seed)
+                print(f"  Generating tile {i+1}/{total} from edge (seed {tile_seed}) …")
+                result = inpaint_pipe(
+                    prompt=full_prompt,
+                    image=canvas,
+                    mask_image=mask,
+                    width=width,
+                    height=height,
+                    num_inference_steps=steps,
+                    guidance_scale=cfg,
+                    strength=1.0,  # only noise the masked area, edge stays pixel-perfect
+                    generator=generator,
+                )
+                tile = result.images[0]
+                if tile.size != (width, height):
+                    tile = tile.resize((width, height))
             generated.append(tile)
         print("  Stitching …")
-        image = stitch_tiles(generated, cols, rows, width, height, overlap)
+        # Tile 2+ were generated with tile 1's edge as left anchor, so stitch with
+        # overlap offset but NO feathered blending — tile edges already match
+        image = stitch_tiles_hard(generated, cols, rows, width, height, overlap)
         final_w = width + (width - overlap) * (cols - 1)
         final_h = height + (height - overlap) * (rows - 1)
         print(f"  Final size: {final_w}x{final_h}")
         if seam_fix:
-            print("  Loading inpaint pipeline for seam fix …")
-            inpaint_pipe = load_pipeline(checkpoint, lora, device, lora_strength, inpaint=True)
+            print("  Fixing seams …")
             image = fix_seams(image, generated, cols, rows, width, height,
                               overlap, inpaint_pipe, full_prompt, seed, steps, cfg)
     else:
