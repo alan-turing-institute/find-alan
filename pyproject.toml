@@ -4,10 +4,14 @@ version = "0.1.0"
 description = "Runnable scripts package for find-alan."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "gradio>=5.0.0",
+    "pillow>=10.0.0",
+]
 
 [project.scripts]
 find-alan = "find_alan.scripts.hello:main"
+find-alan-gui = "find_alan.scripts.gui:main"
 
 [build-system]
 requires = ["uv_build>=0.11.19,<0.12.0"]
