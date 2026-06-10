@@ -224,7 +224,13 @@ def _require_ml() -> Any:
         ) from exc
 
 
-def _load_flux_pipeline(model_id: str, device_map: str | None, torch_dtype: Any) -> Any:
+def _load_flux_pipeline(
+    model_id: str,
+    device_map: str | None,
+    torch_dtype: Any,
+    lora_weights: str | None = None,
+    lora_weight_name: str | None = None,
+) -> Any:
     from diffusers import AutoPipelineForText2Image  # noqa: PLC0415
 
     logger.info("Loading pipeline from %r …", model_id)
@@ -232,6 +238,12 @@ def _load_flux_pipeline(model_id: str, device_map: str | None, torch_dtype: Any)
     if device_map:
         kwargs["device_map"] = device_map
     pipe = AutoPipelineForText2Image.from_pretrained(model_id, **kwargs)
+    if lora_weights:
+        logger.info("Loading LoRA weights from %r …", lora_weights)
+        lora_kwargs: dict[str, Any] = {}
+        if lora_weight_name:
+            lora_kwargs["weight_name"] = lora_weight_name
+        pipe.load_lora_weights(lora_weights, **lora_kwargs)
     return pipe
 
 
@@ -243,11 +255,15 @@ def _generate_tile(
     steps: int,
     guidance_scale: float,
     generator_device: str,
+    custom_sigmas: tuple[float, ...] | None = None,
 ) -> Any:
     import torch  # noqa: PLC0415
     from PIL import Image  # noqa: PLC0415
 
     generator = torch.Generator(device=generator_device).manual_seed(seed)
+    extra: dict[str, Any] = {}
+    if custom_sigmas is not None:
+        extra["sigmas"] = list(custom_sigmas)
     result = pipe(
         prompt=prompt,
         height=tile_size,
@@ -255,6 +271,7 @@ def _generate_tile(
         num_inference_steps=steps,
         guidance_scale=guidance_scale,
         generator=generator,
+        **extra,
     )
     image: Image.Image = result.images[0]
     return image
@@ -346,6 +363,9 @@ class SceneGenerationConfig:
     llm_model: str = DEFAULT_LLM_MODEL
     llm_timeout: float = 60.0
     tile_prompts: tuple[str, ...] | None = None  # pre-resolved; skips LLM/fallback if set
+    lora_weights: str | None = None       # HF repo ID for a LoRA adapter (e.g. fal/FLUX.2-dev-Turbo)
+    lora_weight_name: str | None = None   # specific safetensors file within the repo
+    custom_sigmas: tuple[float, ...] | None = None  # override inference sigma schedule
 
 
 @dataclass(frozen=True)
@@ -415,7 +435,13 @@ def generate_scene_stream(
         logger.debug("Tile %d prompt: %s", i, p[:120])
 
     # ── 2. Load Flux ─────────────────────────────────────────────────────────
-    pipe = _load_flux_pipeline(config.flux_model_id, config.device_map, torch_dtype)
+    pipe = _load_flux_pipeline(
+        config.flux_model_id,
+        config.device_map,
+        torch_dtype,
+        lora_weights=config.lora_weights,
+        lora_weight_name=config.lora_weight_name,
+    )
     if config.device_map is None:
         pipe.enable_model_cpu_offload()
 
@@ -440,6 +466,7 @@ def generate_scene_stream(
             steps=config.steps,
             guidance_scale=config.guidance_scale,
             generator_device=config.generator_device,
+            custom_sigmas=config.custom_sigmas,
         )
         tiles.append(tile)
         tile_path: Path | None = None

@@ -13,11 +13,30 @@ from find_alan.scene_generate import (
     resolve_tile_prompts,
 )
 
-# (model_id, default_steps)
-MODELS: dict[str, tuple[str, int]] = {
-    "FLUX.2-klein-4B (fast)":     ("black-forest-labs/FLUX.2-klein-4B",  4),
-    "FLUX.2-klein-9B (balanced)": ("black-forest-labs/FLUX.2-klein-9B",  8),
-    "FLUX.2-dev (quality)":       ("black-forest-labs/FLUX.2-dev",       28),
+MODELS: dict[str, dict] = {
+    "FLUX.2-klein-4B (fast)": dict(
+        model_id="black-forest-labs/FLUX.2-klein-4B",
+        default_steps=4,
+        default_guidance=3.5,
+    ),
+    "FLUX.2-klein-9B (balanced)": dict(
+        model_id="black-forest-labs/FLUX.2-klein-9B",
+        default_steps=8,
+        default_guidance=3.5,
+    ),
+    "FLUX.2-dev-Turbo (fast+quality)": dict(
+        model_id="black-forest-labs/FLUX.2-dev",
+        default_steps=8,
+        default_guidance=2.5,
+        lora_weights="fal/FLUX.2-dev-Turbo",
+        lora_weight_name="flux.2-turbo-lora.safetensors",
+        custom_sigmas=(1.0, 0.6509, 0.4374, 0.2932, 0.1893, 0.1108, 0.0495, 0.00031),
+    ),
+    "FLUX.2-dev (quality)": dict(
+        model_id="black-forest-labs/FLUX.2-dev",
+        default_steps=28,
+        default_guidance=3.5,
+    ),
 }
 DEFAULT_MODEL = "FLUX.2-klein-4B (fast)"
 DEFAULT_LLM_URL = "http://localhost:8000/v1"
@@ -30,8 +49,7 @@ def _n_to_grid(n: int) -> tuple[int, int]:
 
 
 def on_model_change(model_label: str):
-    _, default_steps = MODELS[model_label]
-    return gr.update(value=default_steps)
+    return gr.update(value=MODELS[model_label]["default_steps"])
 
 
 def check_llm_status(llm_url: str) -> str:
@@ -74,7 +92,7 @@ def run_generate(
 
     cols, rows = _n_to_grid(n_scenes)
     total = cols * rows
-    model_id, _ = MODELS[model_label]
+    model_cfg = MODELS[model_label]
 
     # ── Step 1: resolve prompts and display them ────────────────────────────
     yield [], [], "Resolving prompts…", gr.update(visible=False)
@@ -103,9 +121,13 @@ def run_generate(
         cols=cols,
         rows=rows,
         save_tiles=True,
-        flux_model_id=model_id,
+        flux_model_id=model_cfg["model_id"],
         steps=steps,
+        guidance_scale=model_cfg.get("default_guidance", 3.5),
         tile_prompts=tuple(raw_prompts),
+        lora_weights=model_cfg.get("lora_weights"),
+        lora_weight_name=model_cfg.get("lora_weight_name"),
+        custom_sigmas=model_cfg.get("custom_sigmas"),
     )
 
     tile_paths: list[str] = []
@@ -213,7 +235,7 @@ def main():
                 )
                 steps_input = gr.Slider(
                     minimum=1, maximum=28, step=1,
-                    value=MODELS[DEFAULT_MODEL][1],
+                    value=MODELS[DEFAULT_MODEL]["default_steps"],
                     label="Steps",
                 )
                 n_scenes_input = gr.Slider(
