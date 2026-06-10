@@ -1,7 +1,7 @@
 """CLI: detect a person in the scene and replace them with a reference figure.
 
 Uses YOLOv8 to find people, selects one according to a strategy, then
-inpaints the reference figure into that region using FLUX.1-Redux + Fill.
+inpaints the reference figure into that region using FLUX.2-Klein.
 This gives the model a correctly-scaled insertion region so the output
 figure matches the crowd's perspective and size.
 
@@ -18,7 +18,7 @@ import random
 from PIL import Image
 
 from find_alan.detect import detect_people, load_detector, pad_bbox, pick_target
-from find_alan.inpaint import DEFAULT_PROMPT, load_pipeline, run_inpainting
+from find_alan.insert import DEFAULT_PROMPT, load_pipeline, run_insertion
 from find_alan.mask import bbox_to_mask
 
 _DETECTION_PROMPT = (
@@ -34,7 +34,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="find-alan-insert-detected",
         description=(
             "Detect a person in the scene with YOLOv8 and replace them with"
-            " the reference figure using FLUX.1-Redux + FLUX.1-Fill.\n\n"
+            " the reference figure using FLUX.2-Klein.\n\n"
             "Scale is correct by construction: the inpaint region is sized to"
             " a real crowd member, so the model fills it at the right size.\n\n"
             "Example:\n"
@@ -84,15 +84,22 @@ def _build_parser() -> argparse.ArgumentParser:
         "--prompt",
         default=_DETECTION_PROMPT,
         metavar="TEXT",
-        help="Text appended to Redux visual tokens to guide blending.",
+        help="Text prompt to guide the insertion.",
+    )
+    p.add_argument(
+        "--strength",
+        type=float,
+        default=0.99,
+        metavar="FLOAT",
+        help="How much the masked region can change (0–1). Default: 0.99.",
     )
     p.add_argument("--steps", type=int, default=50, metavar="INT", help="Inference steps. Default: 50.")
     p.add_argument(
         "--guidance-scale",
         type=float,
-        default=30.0,
+        default=10.0,
         metavar="FLOAT",
-        help="CFG scale. Default: 30.0.",
+        help="CFG scale. Default: 10.0.",
     )
     p.add_argument("--seed", type=int, default=None, metavar="INT", help="Reproducibility seed.")
     p.add_argument(
@@ -145,16 +152,17 @@ def main(argv: list[str] | None = None) -> int:
         mask.save(args.save_mask)
         print(f"Mask saved → {args.save_mask}")
 
-    print("Loading pipelines (FLUX.1-Redux + FLUX.1-Fill, ~25 GB, downloaded on first run)...")
-    pipelines = load_pipeline(device=args.device)
+    print("Loading pipeline (FLUX.2-Klein, ~13 GB, downloaded on first run)...")
+    pipe = load_pipeline(device=args.device)
 
     print("Running inpainting...")
-    result = run_inpainting(
-        pipelines=pipelines,
+    result = run_insertion(
+        pipe=pipe,
         scene=scene,
         figure=figure,
         mask=mask,
         prompt=args.prompt,
+        strength=args.strength,
         num_inference_steps=args.steps,
         guidance_scale=args.guidance_scale,
         seed=args.seed,

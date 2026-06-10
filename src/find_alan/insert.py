@@ -69,6 +69,7 @@ def run_insertion(
     pipe: Flux2KleinInpaintPipeline,
     scene: Image.Image,
     figure: Image.Image,
+    mask: Image.Image | None = None,
     prompt: str = DEFAULT_PROMPT,
     strength: float = 0.75,
     num_inference_steps: int = 50,
@@ -76,9 +77,11 @@ def run_insertion(
     seed: int | None = None,
 ) -> Image.Image:
     """
-    Insert *figure* into *scene* without a mask.
+    Insert *figure* into *scene*.
 
-    The model infers placement from the prompt and scene context.
+    If *mask* is None an all-white mask is used and the model infers placement
+    from the prompt and scene context.  Pass a greyscale mask (white = repaint)
+    to restrict the edit to a specific region, e.g. a detected bounding box.
     *strength* controls how much the scene is allowed to change (0–1);
     lower values preserve more of the original.
     """
@@ -88,15 +91,13 @@ def run_insertion(
 
     w, h = scene.size
 
-    # The inpaint pipeline requires a mask. An all-white mask tells it to
-    # repaint the entire image; `strength` controls how far the result can
-    # drift from the original scene (lower = preserve more background).
-    full_mask = Image.new("L", (w, h), 255)
+    if mask is None:
+        mask = Image.new("L", (w, h), 255)
 
     result = pipe(
         prompt=prompt,
         image=scene.convert("RGB"),
-        mask_image=full_mask,
+        mask_image=mask.convert("L").resize((w, h)),
         image_reference=_pad_to_square(figure.convert("RGB")),
         height=h,
         width=w,
