@@ -12,33 +12,21 @@ uv sync
 
 ## Usage
 
-There are two ways to insert a figure into a crowd scene, differing in model requirements and how much control you want over placement.
+There are three ways to insert a figure into a crowd scene, differing in model requirements and how much control you want over placement.
 
 ### Option A — FLUX.2-Klein: maskless insertion (recommended)
 
-Uses `FLUX.2-klein-4B` (~13 GB) with a dedicated `image_reference` parameter. No mask needed — the model places the figure based on the prompt and scene context.
+Uses `FLUX.2-klein-4B` with a dedicated `image_reference` parameter. No mask needed — the model places the figure based on the prompt and scene context.
 
-#### Step 1 — Accept the model licence and log in
+Before running, accept the model licence at huggingface.co/black-forest-labs/FLUX.2-klein-4B.
 
-Accept the licence at huggingface.co/black-forest-labs/FLUX.2-klein-4B, then:
-
-```sh
-huggingface-cli login
-```
-
-#### Step 2 — Generate example images
-
-```sh
-uv run find-alan-prepare-examples
-```
-
-#### Step 3 — Run insertion
+####  Run insertion
 
 ```sh
 uv run find-alan-insert \
-  --scene examples/crowd_scene.png \
-  --figure examples/figure.png \
-  --output examples/result.png \
+  --scene <base image>.png \
+  --figure <figure image>.png \
+  --output <result filename>.png \
   --seed 42
 ```
 
@@ -59,26 +47,21 @@ uv run find-alan-insert --help
 
 ### Option B — FLUX.1-Redux + FLUX.1-Fill: mask-based inpainting
 
-Uses `FLUX.1-Redux-dev` + `FLUX.1-Fill-dev` (~25 GB combined). You supply a mask that marks exactly where the figure is inserted; the Redux prior encodes the reference figure as visual tokens that condition the fill.
+Uses `FLUX.1-Redux-dev` + `FLUX.1-Fill-dev. You supply a mask that marks exactly where the figure is inserted; the Redux prior encodes the reference figure as visual tokens that condition the fill.
 
-Both models are gated — accept the licence at huggingface.co/black-forest-labs/FLUX.1-Fill-dev and huggingface.co/black-forest-labs/FLUX.1-Redux-dev, then run `huggingface-cli login`.
+Both models are gated — accept the licence at huggingface.co/black-forest-labs/FLUX.1-Fill-dev and huggingface.co/black-forest-labs/FLUX.1-Redux-dev.
 
-#### Step 1 — Generate example images
 
-```sh
-uv run find-alan-prepare-examples
-```
-
-#### Step 2 — Run inpainting
+#### Run inpainting
 
 With a mask file (white = inpaint, black = keep):
 
 ```sh
 uv run find-alan-inpaint \
-  --scene examples/crowd_scene.png \
-  --figure examples/figure.png \
-  --mask examples/mask.png \
-  --output examples/result.png \
+  --scene <base image>.png \
+  --figure <figure image>.png \
+  --mask <mask image>.png \
+  --output <result filename>.png \
   --seed 42
 ```
 
@@ -94,4 +77,38 @@ uv run find-alan-inpaint \
 
 ```sh
 uv run find-alan-inpaint --help
+```
+
+---
+
+### Option C — YOLOv8 + FLUX.1-Redux/Fill: detection-guided inpainting
+
+Uses `YOLOv8` to detect people in the scene, selects one as the target, then inpaints the reference figure into that region with `FLUX.1-Redux-dev` + `FLUX.1-Fill-dev`. Because the mask is sized to a real crowd member the inserted figure automatically matches the correct scale and perspective.
+
+Both FLUX models are gated — accept the licences at huggingface.co/black-forest-labs/FLUX.1-Fill-dev and huggingface.co/black-forest-labs/FLUX.1-Redux-dev before running.
+
+#### Run detection + inpainting
+
+```sh
+uv run find-alan-insert-detected \
+  --scene <base image>.png \
+  --figure <figure image>.png \
+  --output <result filename>.png \
+  --seed 42
+```
+
+Key options:
+
+| Flag | Default | Notes |
+| --- | --- | --- |
+| `--strategy` | `random` | Which detected person to replace: `random`, `largest`, `smallest`, `center`. |
+| `--conf` | `0.3` | YOLO confidence threshold — lower to detect more people. |
+| `--yolo-model` | `yolov8n` | YOLOv8 variant (`yolov8n/s/m/l/x`). Larger = more accurate, slower. |
+| `--padding` | `0.15` | Fraction to expand the detected bbox for edge blending. |
+| `--guidance-scale` | `30.0` | CFG scale. |
+| `--steps` | `50` | Inference steps. |
+| `--save-mask` | *(none)* | Optional path to save the generated mask for inspection. |
+
+```sh
+uv run find-alan-insert-detected --help
 ```
