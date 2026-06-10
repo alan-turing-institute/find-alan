@@ -16,20 +16,21 @@ import random
 from pathlib import Path
 
 STYLE_PREFIX = (
-    "flat 2D illustration, cartoon comic book style, line art"
-    "where's wally art style, where's waldo art style, where's walter art style,"
+    "flat 2D illustration, cartoon comic book style, line art, "
+    "where's wally art style, where's waldo art style, where's walter art style, "
     "extremely detailed crowd scene, "
-    "lots of people doing various activities, busy and chaotic, crowd "
-    "small people, flat cartoon art, bright colours, "
-    "illustrated book style, top-down view, "
-    "hand-drawn look, highly detailed, colourful"
+    "lots of people doing various activities, busy and chaotic, "
+    "small tiny people, flat cartoon art, bright colours, "
+    "illustrated book style, isometric view, wide angle, zoomed out, bird's eye view, "
+    "hand-drawn look, highly detailed, colourful, full scene visible"
 )
 
 NEGATIVE_PROMPT = (
     "photorealistic, 3d render, blurry, low quality, nsfw, violence, "
     "dark, monochrome, simple background, few people, missing limbs, deformed, bad anatomy, "
     "extra limbs, extra fingers, fused fingers, mutated hands, malformed, disfigured, "
-    "ugly, poorly drawn hands, poorly drawn face, mutation, text, watermark,"
+    "ugly, poorly drawn hands, poorly drawn face, mutation, text, watermark, "
+    "close-up, portrait, zoomed in, macro, few characters, empty space, "
     "blurry, lowres, bad composition, overexposed, underexposed, out of focus"
 )
 
@@ -44,18 +45,41 @@ SCENE_PROMPTS: dict[str, str] = {
                   "departure boards, security queues",
     "city":       "medieval city street festival, market stalls, jesters, "
                   "knights, townspeople",
-    "markets":    "bustling outdoor market with colourful stalls selling fresh fish,"
-                    "spices, fruits, vegetables, textiles, pottery, jewelry, street food, skewers"
-                  "whole crabs, exotic fruits, tropical vegetables, spices, "
-                  "hanging meats, bread loaves, cheese wheels, olives, dried herbs, flowers, "
-                  "handmade clothes, pottery, trinkets, shoppers haggling, street food vendors, "
-                  "lanterns lining the markets, baskets overflowing with produce",
+    "markets":    "bustling outdoor market, colourful stalls, fresh fish, spices, fruits, "
+                  "vegetables, street food, crabs, hanging meats, bread, flowers, "
+                  "shoppers haggling, lanterns, baskets of produce, street vendors",
                   
+    "lantern_festival": "lantern festival at night, crowds of people, glowing lanterns into the sky, "
+                        "lanterns floating on water, lanterns hanging from trees, "
+                        "lanterns of various shapes and sizes, vibrant colors, "
+                        "festive atmosphere, reflections of lanterns in water, "
+                        "people releasing lanterns, lanterns illuminating faces, "
+                        "lanterns drifting in the night sky, lanterns creating a magical ambiance"
+                        "body of water, trees, night sky, reflections, crowds of people,",
+                            
+    "christmas":  "christmas market scene with festive stalls, christmas trees, "
+                    "people in winter clothing, snow, twinkling lights, santa hats, carol singers, hot cocoa stands, holiday decorations,"
+                    "snowmen, ice skaters, wrapped presents, wreaths, gingerbread houses, festive atmosphere,"
+                    "snow-covered ground, cozy cabins, christmas ornaments, holiday cheer,"
+                    "families enjoying the market, christmas music, seasonal treats, warm scarves and mittens,"
+                    "christmas lights illuminating the scene, joyful crowds, festive spirit,",
+        
     "halloween":   "halloween night scene with trick-or-treaters in costumes, "
                    "pumpkin patches, haunted houses, witches, ghosts, skeletons, "
                    "spooky decorations, black cats, bats, moonlit sky",
-}
 
+    "canal":       "venice canal scene with gondolas, bridges, tourists, street musicians, boats"
+                    "waterways, historic buildings, colorful facades, outdoor cafes, reflections in water, " 
+                   "water, boats, historic architecture, bustling atmosphere,",
+                   
+    "library":     "grand library interior with towering bookshelves, ladders, readers, "
+                    "multiple floors, balconies, ornate architecture, quiet study areas, hidden nooks, librarian desks, "
+                    "librarians, study tables, globes, ancient tomes"
+                    "warm lighting, cozy atmosphere, diverse characters, quiet study areas, "
+                    "stained glass windows, ornate woodwork, hidden nooks, banker lamps,"
+                    }
+                        
+                        
 DEFAULT_CHECKPOINT = "RunDiffusion/Juggernaut-XL-v9"
 
 
@@ -70,12 +94,11 @@ def is_xl(checkpoint: str) -> bool:
 def load_pipeline(checkpoint: str, lora: str | None, device: str, lora_strength: float = 0.8, inpaint: bool = False):
     import torch
     from diffusers import (
-        FluxFillPipeline,
         FluxPipeline,
-        StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,
-        StableDiffusionXLInpaintPipeline,
         StableDiffusionXLPipeline,
+        StableDiffusionXLInpaintPipeline,
+        StableDiffusionInpaintPipeline,
     )
 
     print(f"  Loading checkpoint: {checkpoint}{' (inpaint)' if inpaint else ''}")
@@ -83,7 +106,8 @@ def load_pipeline(checkpoint: str, lora: str | None, device: str, lora_strength:
     if is_flux(checkpoint):
         dtype = torch.bfloat16
         if inpaint:
-            pipe = FluxFillPipeline.from_pretrained("black-forest-labs/FLUX.1-Fill-dev", torch_dtype=dtype)
+            from diffusers import FluxInpaintPipeline
+            pipe = FluxInpaintPipeline.from_pretrained(checkpoint, torch_dtype=dtype)
         else:
             pipe = FluxPipeline.from_pretrained(checkpoint, torch_dtype=dtype)
         pipe.enable_model_cpu_offload()
@@ -93,17 +117,12 @@ def load_pipeline(checkpoint: str, lora: str | None, device: str, lora_strength:
             PipelineClass = StableDiffusionXLInpaintPipeline if inpaint else StableDiffusionXLPipeline
         else:
             PipelineClass = StableDiffusionInpaintPipeline if inpaint else StableDiffusionPipeline
-
         cp = Path(checkpoint)
-        is_single_file = (
-            checkpoint.startswith("http")
-            or (cp.suffix in {".safetensors", ".ckpt"})
-        )
+        is_single_file = checkpoint.startswith("http") or cp.suffix in {".safetensors", ".ckpt"}
         if is_single_file:
             pipe = PipelineClass.from_single_file(checkpoint, torch_dtype=dtype)
         else:
             pipe = PipelineClass.from_pretrained(checkpoint, torch_dtype=dtype)
-
         pipe = pipe.to(device)
         pipe.enable_attention_slicing()
 
@@ -121,57 +140,179 @@ def load_pipeline(checkpoint: str, lora: str | None, device: str, lora_strength:
 
 def generate_tile(pipe, prompt: str, seed: int, width: int, height: int, steps: int, cfg: float, device: str):
     import torch
+    from diffusers import FluxPipeline
     generator = torch.Generator(device=device).manual_seed(seed)
-    result = pipe(
+    kwargs = dict(
         prompt=prompt,
-        negative_prompt=NEGATIVE_PROMPT,
         width=width,
         height=height,
         num_inference_steps=steps,
         guidance_scale=cfg,
         generator=generator,
     )
+    # Flux doesn't support negative_prompt
+    if not isinstance(pipe, FluxPipeline):
+        kwargs["negative_prompt"] = NEGATIVE_PROMPT
+    result = pipe(**kwargs)
     return result.images[0]
 
 
-def outpaint_tile(inpaint_pipe, prev_tile, prompt: str, seed: int, width: int, height: int,
+def outpaint_tile(pipe, inpaint_pipe, prev_tile, prompt: str, seed: int, width: int, height: int,
                   steps: int, cfg: float, device: str, overlap: int = 256, direction: str = "right"):
-    """Extend prev_tile in the given direction using inpainting."""
+    """Extend prev_tile using inpainting (SDXL) or img2img (Flux)."""
     from PIL import Image
     import numpy as np
     import torch
 
-    # Build a canvas: paste the known edge strip, mask the rest
-    canvas = Image.new("RGB", (width, height), (0, 0, 0))
-    mask   = Image.new("L",   (width, height), 255)  # 255 = inpaint this area
+    # Build canvas with the known edge pasted in
+    canvas = Image.new("RGB", (width, height), (128, 128, 128))
+    # SDXL mask: 255=inpaint, 0=keep
+    # FluxFill mask: 255=inpaint, 0=keep (same convention)
+    mask   = Image.new("L", (width, height), 255)
 
     if direction == "right":
-        # Take the right `overlap` pixels of prev_tile as the known left edge
+        mirrored = prev_tile.transpose(Image.FLIP_LEFT_RIGHT).resize((width, height))
+        canvas.paste(mirrored, (0, 0))
         edge = prev_tile.crop((prev_tile.width - overlap, 0, prev_tile.width, prev_tile.height))
         canvas.paste(edge, (0, 0))
-        # Known area = left overlap strip → mask = 0 there
         mask_arr = np.array(mask)
-        mask_arr[:, :overlap] = 0
+        mask_arr[:, :overlap] = 0  # keep the left edge strip
         mask = Image.fromarray(mask_arr)
     elif direction == "down":
+        mirrored = prev_tile.transpose(Image.FLIP_TOP_BOTTOM).resize((width, height))
+        canvas.paste(mirrored, (0, 0))
         edge = prev_tile.crop((0, prev_tile.height - overlap, prev_tile.width, prev_tile.height))
         canvas.paste(edge, (0, 0))
         mask_arr = np.array(mask)
-        mask_arr[:overlap, :] = 0
+        mask_arr[:overlap, :] = 0  # keep the top edge strip
         mask = Image.fromarray(mask_arr)
 
     generator = torch.Generator(device=device).manual_seed(seed)
-    result = inpaint_pipe(
-        prompt=prompt,
-        image=canvas,
-        mask_image=mask,
-        width=width,
-        height=height,
-        num_inference_steps=steps,
-        guidance_scale=cfg,
-        generator=generator,
-    )
-    return result.images[0]
+
+    from diffusers import FluxInpaintPipeline
+    is_flux_inpaint = isinstance(inpaint_pipe, FluxInpaintPipeline)
+
+    if is_flux_inpaint:
+        result = inpaint_pipe(
+            prompt=prompt,
+            image=canvas,
+            mask_image=mask,
+            width=width,
+            height=height,
+            num_inference_steps=steps,
+            guidance_scale=cfg,
+            strength=0.85,
+            generator=generator,
+        )
+    elif inpaint_pipe is not None:
+        result = inpaint_pipe(
+            prompt=prompt,
+            negative_prompt=NEGATIVE_PROMPT,
+            image=canvas,
+            mask_image=mask,
+            width=width,
+            height=height,
+            num_inference_steps=steps,
+            guidance_scale=cfg,
+            generator=generator,
+        )
+    else:
+        raise RuntimeError("No inpaint pipeline loaded.")
+
+    out = result.images[0]
+    if out.size != (width, height):
+        out = out.resize((width, height))
+    return out
+
+
+def fix_seams(stitched, tiles: list, cols: int, rows: int, tile_w: int, tile_h: int,
+              overlap: int, inpaint_pipe, prompt: str, seed: int, steps: int, cfg: float):
+    """Run FLUX.1-Fill over just the seam strips to blend tile joins."""
+    from PIL import Image
+    import numpy as np
+    import torch
+
+    from diffusers import FluxInpaintPipeline
+    is_flux_inpaint = isinstance(inpaint_pipe, FluxInpaintPipeline)
+    fill_cfg = cfg
+
+    result = stitched.copy()
+    step_x = tile_w - overlap
+    step_y = tile_h - overlap
+
+    # Fix vertical seams (between columns)
+    for col in range(1, cols):
+        x = col * step_x  # seam centre
+        x0 = max(0, x - overlap)
+        x1 = min(stitched.width, x + overlap)
+
+        # Crop the seam strip from stitched image
+        seam_strip = result.crop((x0, 0, x1, stitched.height))
+        strip_w = x1 - x0
+        strip_h = stitched.height
+
+        # Mask: inpaint only the centre of the seam
+        mask = Image.new("L", (strip_w, strip_h), 0)
+        mask_arr = np.array(mask)
+        centre_start = max(0, overlap - overlap // 2)
+        centre_end   = min(strip_w, overlap + overlap // 2)
+        mask_arr[:, centre_start:centre_end] = 255
+        mask = Image.fromarray(mask_arr)
+
+        generator = torch.Generator().manual_seed(seed + col)
+        print(f"  Fixing vertical seam at x={x} …")
+        out = inpaint_pipe(
+            prompt=prompt,
+            image=seam_strip,
+            mask_image=mask,
+            width=strip_w,
+            height=strip_h,
+            num_inference_steps=steps,
+            guidance_scale=fill_cfg,
+            strength=0.85,
+            generator=generator,
+        ).images[0]
+
+        if out.size != (strip_w, strip_h):
+            out = out.resize((strip_w, strip_h))
+        result.paste(out, (x0, 0))
+
+    # Fix horizontal seams (between rows)
+    for row in range(1, rows):
+        y = row * step_y
+        y0 = max(0, y - overlap)
+        y1 = min(stitched.height, y + overlap)
+
+        seam_strip = result.crop((0, y0, stitched.width, y1))
+        strip_w = stitched.width
+        strip_h = y1 - y0
+
+        mask = Image.new("L", (strip_w, strip_h), 0)
+        mask_arr = np.array(mask)
+        centre_start = max(0, overlap - overlap // 2)
+        centre_end   = min(strip_h, overlap + overlap // 2)
+        mask_arr[centre_start:centre_end, :] = 255
+        mask = Image.fromarray(mask_arr)
+
+        generator = torch.Generator().manual_seed(seed + cols + row)
+        print(f"  Fixing horizontal seam at y={y} …")
+        out = inpaint_pipe(
+            prompt=prompt,
+            image=seam_strip,
+            mask_image=mask,
+            width=strip_w,
+            height=strip_h,
+            num_inference_steps=steps,
+            guidance_scale=fill_cfg,
+            strength=0.85,
+            generator=generator,
+        ).images[0]
+
+        if out.size != (strip_w, strip_h):
+            out = out.resize((strip_w, strip_h))
+        result.paste(out, (0, y0))
+
+    return result
 
 
 def stitch_tiles(tiles: list, cols: int, rows: int, tile_w: int, tile_h: int, overlap: int = 128):
@@ -226,6 +367,7 @@ def run_pipeline(
     tiles: str | None = None,
     overlap: int = 128,
     outpaint: bool = False,
+    seam_fix: bool = False,
 ) -> Path:
     import torch
 
@@ -241,10 +383,9 @@ def run_pipeline(
     if tiles and outpaint:
         cols, rows = (int(x) for x in tiles.lower().split("x"))
         print(f"Mode    : outpaint {cols}x{rows}")
-        pipe      = load_pipeline(checkpoint, lora, device, lora_strength, inpaint=False)
+        pipe = load_pipeline(checkpoint, lora, device, lora_strength, inpaint=False)
         inpaint_pipe = load_pipeline(checkpoint, lora, device, lora_strength, inpaint=True)
 
-        # Generate all tiles row by row using outpainting
         all_tiles = []
         for row in range(rows):
             row_tiles = []
@@ -256,19 +397,20 @@ def run_pipeline(
                 elif col > 0:
                     prev = row_tiles[-1]
                     print(f"  Outpainting right → tile ({row},{col}) …")
-                    tile = outpaint_tile(inpaint_pipe, prev, full_prompt, tile_seed,
+                    tile = outpaint_tile(pipe, inpaint_pipe, prev, full_prompt, tile_seed,
                                         width, height, steps, cfg, device, overlap, "right")
                 else:
                     prev = all_tiles[-1][0]
                     print(f"  Outpainting down → tile ({row},{col}) …")
-                    tile = outpaint_tile(inpaint_pipe, prev, full_prompt, tile_seed,
+                    tile = outpaint_tile(pipe, inpaint_pipe, prev, full_prompt, tile_seed,
                                         width, height, steps, cfg, device, overlap, "down")
                 row_tiles.append(tile)
             all_tiles.append(row_tiles)
 
         flat_tiles = [t for row_tiles in all_tiles for t in row_tiles]
         print("  Stitching …")
-        image = stitch_tiles(flat_tiles, cols, rows, width, height, overlap)
+        # Outpainted tiles share edges via the overlap context — stitch with overlap so edges blend
+        image = stitch_tiles(flat_tiles, cols, rows, width, height, overlap // 2)
 
     elif tiles:
         cols, rows = (int(x) for x in tiles.lower().split("x"))
@@ -293,6 +435,11 @@ def run_pipeline(
         final_w = width + (width - overlap) * (cols - 1)
         final_h = height + (height - overlap) * (rows - 1)
         print(f"  Final size: {final_w}x{final_h}")
+        if seam_fix:
+            print("  Loading inpaint pipeline for seam fix …")
+            inpaint_pipe = load_pipeline(checkpoint, lora, device, lora_strength, inpaint=True)
+            image = fix_seams(image, generated, cols, rows, width, height,
+                              overlap, inpaint_pipe, full_prompt, seed, steps, cfg)
     else:
         pipe = load_pipeline(checkpoint, lora, device, lora_strength)
         print(f"Size    : {width}x{height}")
@@ -332,6 +479,7 @@ def main() -> None:
     parser.add_argument("--tiles", default=None, help="Grid of tiles e.g. 3x2 (cols x rows)")
     parser.add_argument("--overlap", type=int, default=256, help="Overlap in pixels for tile blending (default: 256)")
     parser.add_argument("--outpaint", action="store_true", help="Use outpainting to extend the scene from tile edges (requires --tiles)")
+    parser.add_argument("--seam-fix", action="store_true", help="After tiling, use FLUX.1-Fill to blend seams (requires --tiles)")
     parser.add_argument("--steps", type=int, default=30)
     parser.add_argument("--cfg", type=float, default=7.5)
     parser.add_argument(
@@ -358,6 +506,7 @@ def main() -> None:
         tiles=args.tiles,
         overlap=args.overlap,
         outpaint=args.outpaint,
+        seam_fix=args.seam_fix,
     )
 
 
