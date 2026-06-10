@@ -5,6 +5,7 @@ description = "Runnable scripts for find-alan."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "gradio>=5.0.0",
     "diffusers>=0.27.0",
     "transformers>=4.38.0",
     # CPU/MPS: pip/uv install torch torchvision
@@ -37,6 +38,7 @@ ml = [
 
 [project.scripts]
 find-alan = "find_alan.scripts.hello:main"
+find-alan-gui = "find_alan.scripts.gui:main"
 find-alan-inpaint = "find_alan.scripts.inpaint:main"
 find-alan-insert = "find_alan.scripts.insert:main"
 find-alan-insert-detected = "find_alan.scripts.insert_detected:main"
