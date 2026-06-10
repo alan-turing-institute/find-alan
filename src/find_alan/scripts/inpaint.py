@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from find_alan.inpaint import DEFAULT_PROMPT, load_pipeline, run_inpainting
+from find_alan.inpaint import load_pipeline, run_inpainting
 from find_alan.mask import load_mask
 
 
@@ -54,13 +54,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     p.add_argument(
-        "--prompt", default=DEFAULT_PROMPT, metavar="TEXT",
-        help=(
-            "Optional text prompt. Redux image embeddings already condition"
-            " the model on the figure, so this can be left empty."
-        ),
-    )
-    p.add_argument(
         "--steps", type=int, default=50, metavar="INT",
         help="Inference steps. Default: 50.",
     )
@@ -102,7 +95,6 @@ def main(argv: list[str] | None = None) -> int:
         scene=scene,
         figure=figure,
         mask=mask,
-        prompt=args.prompt,
         num_inference_steps=args.steps,
         guidance_scale=args.guidance_scale,
         seed=args.seed,

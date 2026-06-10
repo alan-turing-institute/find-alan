@@ -16,8 +16,6 @@ from diffusers import FluxFillPipeline, FluxPriorReduxPipeline
 _REDUX_MODEL = "black-forest-labs/FLUX.1-Redux-dev"
 _FILL_MODEL = "black-forest-labs/FLUX.1-Fill-dev"
 
-DEFAULT_PROMPT = ""  # Redux image embeddings replace the text prompt
-
 
 def _auto_device() -> str:
     if torch.cuda.is_available():
@@ -63,7 +61,6 @@ def run_inpainting(
     scene: Image.Image,
     figure: Image.Image,
     mask: Image.Image,
-    prompt: str = DEFAULT_PROMPT,
     num_inference_steps: int = 50,
     guidance_scale: float = 30.0,
     seed: int | None = None,
@@ -91,7 +88,6 @@ def run_inpainting(
     prior_output = pipelines.prior(figure.convert("RGB"))
 
     result = pipelines.fill(
-        prompt=prompt,
         image=model_scene,
         mask_image=model_mask,
         height=h,
