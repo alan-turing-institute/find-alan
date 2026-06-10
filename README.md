@@ -12,7 +12,7 @@ uv sync
 
 ## Inpainting
 
-Insert a figure into a crowd scene using IP-Adapter + FLUX.1 inpainting.
+Insert a figure into a crowd scene using FLUX.1-Redux + FLUX.1-Fill inpainting.
 
 ### Step 1 — Generate example images
 
@@ -26,7 +26,7 @@ Replace these with real images for meaningful results.
 
 ### Step 2 — Run inpainting
 
-Models (~24 GB) are downloaded from Hugging Face on first run. Requires 24 GB+ VRAM or unified memory (Apple Silicon).
+Models (~25 GB) are downloaded from Hugging Face on first run. Both models are gated — accept the licence at huggingface.co/black-forest-labs/FLUX.1-Fill-dev and huggingface.co/black-forest-labs/FLUX.1-Redux-dev, then run `huggingface-cli login`.
 
 ```sh
 uv run find-alan-inpaint \
