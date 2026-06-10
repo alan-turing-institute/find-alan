@@ -1,12 +1,12 @@
-"""IP-Adapter + FLUX.1-Fill inpainting pipeline."""
+"""IP-Adapter + FLUX.1 inpainting pipeline."""
 
 from __future__ import annotations
 
 import torch
 from PIL import Image
-from diffusers import FluxFillPipeline
+from diffusers import FluxInpaintPipeline
 
-_FLUX_FILL_MODEL = "black-forest-labs/FLUX.1-Fill-dev"
+_FLUX_MODEL = "black-forest-labs/FLUX.1-dev"
 _IP_ADAPTER_REPO = "InstantX/FLUX.1-dev-IP-Adapter"
 _IP_ADAPTER_WEIGHTS = "ip-adapter.bin"
 
@@ -32,17 +32,17 @@ def _auto_device() -> str:
 
 def load_pipeline(
     device: str | None = None,
-) -> FluxFillPipeline:
+) -> FluxInpaintPipeline:
     """Download (first run) and return a ready-to-use inpainting pipeline.
 
-    FLUX.1-Fill-dev is ~24 GB in bfloat16. Requires 24 GB+ VRAM (GPU)
+    FLUX.1-dev is ~24 GB in bfloat16. Requires 24 GB+ VRAM (GPU)
     or unified memory (Apple Silicon).
     """
     if device is None:
         device = _auto_device()
 
-    pipe = FluxFillPipeline.from_pretrained(
-        _FLUX_FILL_MODEL,
+    pipe = FluxInpaintPipeline.from_pretrained(
+        _FLUX_MODEL,
         torch_dtype=torch.bfloat16,
     )
     pipe.load_ip_adapter(
@@ -54,7 +54,7 @@ def load_pipeline(
 
 
 def run_inpainting(
-    pipe: FluxFillPipeline,
+    pipe: FluxInpaintPipeline,
     scene: Image.Image,
     figure: Image.Image,
     mask: Image.Image,

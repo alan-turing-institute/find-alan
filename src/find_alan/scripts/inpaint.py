@@ -102,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
         image_size=scene.size,
     )
 
-    print("Loading pipeline (FLUX.1-Fill ~24 GB, downloaded on first run)...")
+    print("Loading pipeline (FLUX.1-dev ~24 GB, downloaded on first run)...")
     pipe = load_pipeline(device=args.device)
 
     print("Running inpainting...")

@@ -12,7 +12,7 @@ uv sync
 
 ## Inpainting
 
-Insert a figure into a crowd scene using IP-Adapter + FLUX.1-Fill inpainting.
+Insert a figure into a crowd scene using IP-Adapter + FLUX.1 inpainting.
 
 ### Step 1 — Generate example images
 
