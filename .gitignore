@@ -15,4 +15,5 @@ htmlcov/
 .env.*
 
 outputs/
+data
 AGENT_PLAN.md
