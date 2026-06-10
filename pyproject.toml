@@ -23,6 +23,7 @@ dependencies = [
     "safetensors>=0.5",
     "transformers>=4.52",
     "ipykernel>=6.0",
+    "sentencepiece>=0.1.99"
     # "torchvision>=0.24",
 ]
 
@@ -46,6 +47,7 @@ find-alan-prepare-examples = "find_alan.scripts.prepare_examples:main"
 find-alan-refine = "find_alan.scripts.refine:main"
 find-alan-crop-plan = "find_alan.scripts.crop_plan:main"
 find-alan-upscale = "find_alan.scripts.upscale:main"
+find-alan-generate = "find_alan.scripts.generate:main"
 
 [build-system]
 requires = ["uv_build>=0.11.19,<0.12.0"]
