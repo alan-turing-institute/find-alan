@@ -48,7 +48,7 @@ def main():
 
         improve_btn.click(fn=run_improve, inputs=selected_path_state, outputs=improved_output)
 
-    demo.launch(server_port=int(os.environ.get("GUI_PORT", 7860)), css="footer { display: none !important; }")
+    demo.launch(server_name="0.0.0.0", server_port=int(os.environ.get("GUI_PORT", 7860)), css="footer { display: none !important; }")
 
 
 if __name__ == "__main__":
