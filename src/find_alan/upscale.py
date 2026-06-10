@@ -15,6 +15,8 @@ DEFAULT_NEGATIVE_PROMPT = (
     "blurry, pixelated, low resolution, smeared faces, duplicate faces, malformed eyes, "
     "text artifacts, watermark, oversharpened halos"
 )
+DEFAULT_MOD_MODEL_ID = "SG161222/RealVisXL_V5.0"
+DEFAULT_FLUX2_MODEL_ID = "black-forest-labs/FLUX.2-dev"
 DEFAULT_MOD_CONTROLNET_ID = "OzzyGT/controlnet-union-promax-sdxl-1.0"
 DEFAULT_MULTIDIFFUSION_CONTROLNET_ID = "xinsir/controlnet-tile-sdxl-1.0"
 
@@ -30,7 +32,7 @@ class DiffusionUpscaleConfig:
     scale: float = 4.0
     prompt: str = DEFAULT_PROMPT
     negative_prompt: str = DEFAULT_NEGATIVE_PROMPT
-    model_id: str = "SG161222/RealVisXL_V5.0"
+    model_id: str = DEFAULT_MOD_MODEL_ID
     controlnet_id: str = DEFAULT_MOD_CONTROLNET_ID
     vae_id: str = "madebyollin/sdxl-vae-fp16-fix"
     custom_pipeline: str = "mod_controlnet_tile_sr_sdxl"
@@ -49,6 +51,12 @@ class DiffusionUpscaleConfig:
     multidiffusion_overlap: int = 512
     multidiffusion_jitter: int | None = None
     multidiffusion_view_batch_size: int = 1
+    flux2_tile_size: int = 1024
+    flux2_overlap: int = 256
+    flux2_jitter: int | None = None
+    flux2_pipeline: str = "auto"
+    flux2_max_sequence_length: int = 512
+    flux2_caption_upsample_temperature: float | None = None
 
 
 def _ceil_to_multiple(value: int, multiple: int) -> int:
@@ -216,5 +224,9 @@ def run_diffusion_upscale(config: DiffusionUpscaleConfig) -> Path:
         from .experimental_multidiffusion import run_multidiffusion_upscale
 
         return run_multidiffusion_upscale(config)
+    if config.engine == "flux2-tile":
+        from .experimental_flux2_tile import run_flux2_tile_upscale
+
+        return run_flux2_tile_upscale(config)
 
     raise ValueError(f"Unknown upscale engine: {config.engine}")

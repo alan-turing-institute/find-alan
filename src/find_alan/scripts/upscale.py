@@ -8,6 +8,8 @@ from pathlib import Path
 import sys
 
 from find_alan.upscale import (
+    DEFAULT_FLUX2_MODEL_ID,
+    DEFAULT_MOD_MODEL_ID,
     DEFAULT_MOD_CONTROLNET_ID,
     DEFAULT_MULTIDIFFUSION_CONTROLNET_ID,
     DEFAULT_NEGATIVE_PROMPT,
@@ -21,15 +23,19 @@ from find_alan.upscale import (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="find-alan-upscale",
-        description="Upscale an image with tiled diffusion or experimental MultiDiffusion.",
+        description="Upscale an image with tiled diffusion, MultiDiffusion, or Flux.2 tiles.",
     )
     parser.add_argument("input", type=Path)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--engine", choices=("mod-tile", "multidiffusion"), default="mod-tile")
+    parser.add_argument(
+        "--engine",
+        choices=("mod-tile", "multidiffusion", "flux2-tile"),
+        default="mod-tile",
+    )
     parser.add_argument("--scale", type=float, default=4.0)
     parser.add_argument("--prompt", default=None)
     parser.add_argument("--negative-prompt", default=None)
-    parser.add_argument("--model-id", default="SG161222/RealVisXL_V5.0")
+    parser.add_argument("--model-id", default=None)
     parser.add_argument("--controlnet-id", default=None)
     parser.add_argument("--vae-id", default="madebyollin/sdxl-vae-fp16-fix")
     parser.add_argument("--device", default=None)
@@ -50,8 +56,30 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--md-overlap", type=int, default=512)
     parser.add_argument("--md-jitter", type=int, default=None)
     parser.add_argument("--md-view-batch-size", type=int, default=1)
+    parser.add_argument("--flux2-tile-size", type=int, default=1024)
+    parser.add_argument("--flux2-overlap", type=int, default=256)
+    parser.add_argument("--flux2-jitter", type=int, default=None)
+    parser.add_argument(
+        "--flux2-pipeline",
+        choices=("auto", "dev", "klein", "klein-kv"),
+        default="auto",
+    )
+    parser.add_argument("--flux2-max-sequence-length", type=int, default=512)
+    parser.add_argument(
+        "--flux2-caption-upsample-temperature",
+        type=float,
+        default=None,
+    )
     parser.add_argument("--no-cpu-offload", action="store_true")
     return parser
+
+
+def _model_id(args: argparse.Namespace) -> str:
+    if args.model_id:
+        return args.model_id
+    if args.engine == "flux2-tile":
+        return DEFAULT_FLUX2_MODEL_ID
+    return DEFAULT_MOD_MODEL_ID
 
 
 def _controlnet_id(args: argparse.Namespace) -> str:
@@ -80,7 +108,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         scale=args.scale,
         prompt=args.prompt or DEFAULT_PROMPT,
         negative_prompt=args.negative_prompt or DEFAULT_NEGATIVE_PROMPT,
-        model_id=args.model_id,
+        model_id=_model_id(args),
         controlnet_id=_controlnet_id(args),
         vae_id=args.vae_id,
         engine=args.engine,
@@ -98,6 +126,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         multidiffusion_overlap=args.md_overlap,
         multidiffusion_jitter=args.md_jitter,
         multidiffusion_view_batch_size=args.md_view_batch_size,
+        flux2_tile_size=args.flux2_tile_size,
+        flux2_overlap=args.flux2_overlap,
+        flux2_jitter=args.flux2_jitter,
+        flux2_pipeline=args.flux2_pipeline,
+        flux2_max_sequence_length=args.flux2_max_sequence_length,
+        flux2_caption_upsample_temperature=args.flux2_caption_upsample_temperature,
     )
 
     try:
