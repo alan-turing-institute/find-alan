@@ -316,10 +316,11 @@ def fix_seams(stitched, tiles: list, cols: int, rows: int, tile_w: int, tile_h: 
 
 
 def stitch_tiles_hard(tiles: list, cols: int, rows: int, tile_w: int, tile_h: int, overlap: int = 0):
-    """Stitch tiles with no blending — just place each tile at the correct offset.
-    Used when tiles were generated with edge context so borders already match."""
+    """Stitch tiles — skip the duplicate overlap strip, blend just 8px at the cut to hide the seam line."""
     from PIL import Image
+    import numpy as np
 
+    feather = 8  # narrow blend just to hide the 1px seam artifact
     step_x = tile_w - overlap
     step_y = tile_h - overlap
     final_w = tile_w + step_x * (cols - 1)
@@ -331,10 +332,21 @@ def stitch_tiles_hard(tiles: list, cols: int, rows: int, tile_w: int, tile_h: in
         col = idx % cols
         x = col * step_x
         y = row * step_y
-        # For tiles after the first, skip the left overlap strip (it's a copy of prev tile's right edge)
         if col > 0:
-            tile = tile.crop((overlap, 0, tile_w, tile_h))
-            canvas.paste(tile, (x + overlap, y))
+            # Paste everything after the overlap strip
+            tile_cropped = tile.crop((overlap + feather, 0, tile_w, tile_h))
+            canvas.paste(tile_cropped, (x + overlap + feather, y))
+            # Feather blend just the first `feather` pixels after the cut
+            canvas_arr = np.array(canvas).astype(np.float32)
+            tile_arr = np.array(tile).astype(np.float32)
+            for f in range(feather):
+                alpha = f / feather
+                px = x + overlap + f
+                canvas_arr[y:y+tile_h, px] = (
+                    (1 - alpha) * canvas_arr[y:y+tile_h, px] +
+                    alpha * tile_arr[:, overlap + f]
+                )
+            canvas = Image.fromarray(canvas_arr.astype(np.uint8))
         else:
             canvas.paste(tile, (x, y))
 
