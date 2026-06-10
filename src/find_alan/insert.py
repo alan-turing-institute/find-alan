@@ -22,8 +22,7 @@ DEFAULT_PROMPT = (
     " foreground subject, not larger than the surrounding crowd."
     " Their feet are planted on the ground at the same depth plane as"
     " nearby figures. Adjacent crowd members overlap them slightly in a"
-    " natural way. The lighting direction, shadow, colour palette, and"
-    " image style match the rest of the scene exactly. Every other part of"
+    " natural way. Every other part of"
     " the image — all other crowd members, the background, the overall"
     " composition — is identical to the original."
 )
@@ -85,9 +84,7 @@ def run_insertion(
     """
     generator = None
     if seed is not None:
-        generator = torch.Generator(
-            device=pipe._execution_device
-        ).manual_seed(seed)
+        generator = torch.Generator(device=pipe._execution_device).manual_seed(seed)
 
     w, h = scene.size
 
