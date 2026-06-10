@@ -16,11 +16,16 @@ from PIL import Image
 _KLEIN_MODEL = "black-forest-labs/FLUX.2-klein-4B"
 
 DEFAULT_PROMPT = (
-    "Insert the person from the reference image into the crowd scene."
-    " The person should be scaled to match the size of the surrounding"
-    " figures, positioned naturally within the crowd, with consistent"
-    " perspective, lighting, and style. Preserve the full body of the"
-    " person. Keep the rest of the scene unchanged."
+    "A crowd scene in which one of the background figures is the person"
+    " from the reference image. The person is the same apparent height and"
+    " body size as the people standing directly beside them — not a"
+    " foreground subject, not larger than the surrounding crowd."
+    " Their feet are planted on the ground at the same depth plane as"
+    " nearby figures. Adjacent crowd members overlap them slightly in a"
+    " natural way. The lighting direction, shadow, colour palette, and"
+    " image style match the rest of the scene exactly. Every other part of"
+    " the image — all other crowd members, the background, the overall"
+    " composition — is identical to the original."
 )
 
 
@@ -66,9 +71,9 @@ def run_insertion(
     scene: Image.Image,
     figure: Image.Image,
     prompt: str = DEFAULT_PROMPT,
-    strength: float = 0.85,
+    strength: float = 0.75,
     num_inference_steps: int = 50,
-    guidance_scale: float = 8.0,
+    guidance_scale: float = 10.0,
     seed: int | None = None,
 ) -> Image.Image:
     """
