@@ -6,15 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .constants import NEGATIVE_PROMPT_01, POSTIVE_PROMPT_01
 
-DEFAULT_PROMPT = (
-    "dense illustrated crowd scene, crisp ink linework, natural faces, coherent clothing, "
-    "high frequency detail, clean edges, richly detailed background"
-)
-DEFAULT_NEGATIVE_PROMPT = (
-    "blurry, pixelated, low resolution, smeared faces, duplicate faces, malformed eyes, "
-    "text artifacts, watermark, oversharpened halos"
-)
+
+DEFAULT_PROMPT = POSTIVE_PROMPT_01
+DEFAULT_NEGATIVE_PROMPT = NEGATIVE_PROMPT_01
 DEFAULT_MOD_MODEL_ID = "SG161222/RealVisXL_V5.0"
 DEFAULT_FLUX2_MODEL_ID = "black-forest-labs/FLUX.2-dev"
 DEFAULT_SD3_MODEL_ID = "stabilityai/stable-diffusion-3.5-large"
