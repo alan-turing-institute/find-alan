@@ -164,7 +164,18 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=10.0,
         metavar="FLOAT",
-        help="CFG scale. Default: 10.0.",
+        help="CFG scale (ignored on distilled models). Default: 10.0.",
+    )
+    p.add_argument(
+        "--reference-repeats",
+        type=int,
+        default=1,
+        metavar="INT",
+        help=(
+            "How many times to repeat the reference image in the conditioning"
+            " sequence. More repeats = stronger reference fidelity."
+            " Try 2–4; beyond ~6 quality degrades. Default: 1."
+        ),
     )
     p.add_argument(
         "--seed",
@@ -280,6 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         num_inference_steps=args.steps,
         guidance_scale=args.guidance_scale,
         seed=args.seed,
+        reference_repeats=args.reference_repeats,
     )
 
     result_sized = result_crop.resize((pw, ph), Image.LANCZOS)

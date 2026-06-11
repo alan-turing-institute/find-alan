@@ -74,6 +74,7 @@ def run_insertion(
     num_inference_steps: int = 50,
     guidance_scale: float = 10.0,
     seed: int | None = None,
+    reference_repeats: int = 1,
 ) -> Image.Image:
     """
     Insert *figure* into *scene*.
@@ -81,6 +82,13 @@ def run_insertion(
     The model infers placement from the prompt and scene context.
     *strength* controls how much the scene is allowed to change (0–1);
     lower values preserve more of the original.
+
+    *reference_repeats* passes the reference image multiple times in the
+    conditioning list.  The pipeline has no explicit reference-scale
+    parameter (guidance_scale is ignored on distilled models), so
+    repeating the reference is the primary way to increase fidelity.
+    Values of 2–4 noticeably improve adherence; beyond ~6 the image
+    quality degrades.
     """
     generator = None
     if seed is not None:
@@ -89,12 +97,11 @@ def run_insertion(
     w, h = scene.size
     full_mask = Image.new("L", (w, h), 255)
 
-    # Scale the reference figure so its longest side matches the shortest
-    # side of the scene.  Without this, a large figure passed to a small
-    # crop is presented to the reference encoder at the wrong scale and
-    # only a portion appears in the output.
+    # Keep the reference at a minimum of 512px on the longest side so the
+    # VAE encoder has enough detail to work with, even when the scene crop
+    # is small.
     ref = figure.convert("RGB")
-    target = min(w, h)
+    target = max(512, min(w, h))
     longest = max(ref.width, ref.height)
     if longest != target:
         scale = target / longest
@@ -104,11 +111,14 @@ def run_insertion(
             Image.LANCZOS,
         )
 
+    padded_ref = _pad_to_square(ref)
+    image_reference = [padded_ref] * reference_repeats if reference_repeats > 1 else padded_ref
+
     result = pipe(
         prompt=prompt,
         image=scene.convert("RGB"),
         mask_image=full_mask,
-        image_reference=_pad_to_square(ref),
+        image_reference=image_reference,
         height=h,
         width=w,
         strength=strength,
