@@ -1,0 +1,6 @@
+"photorealistic, 3d render, blurry, low quality, nsfw, violence, "
+    "dark, monochrome, simple background, few people, missing limbs, deformed, bad anatomy, "
+    "extra limbs, extra fingers, fused fingers, mutated hands, malformed, disfigured, "
+    "ugly, poorly drawn hands, poorly drawn face, mutation, text, watermark, "
+    "close-up, portrait, zoomed in, macro, few characters, empty space, "
+    "blurry, lowres, bad composition, overexposed, underexposed, out of focus, moody"

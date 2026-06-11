@@ -6,35 +6,20 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "gradio>=5.0.0",
-    "diffusers>=0.27.0",
-    "transformers>=4.38.0",
-    # CPU/MPS: pip/uv install torch torchvision
-    # CUDA:    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+    "diffusers>=0.33.0",
+    "transformers>=4.52",
     "torch>=2.2.0",
     "torchvision>=0.17.0",
-    "accelerate>=0.27.0",
-    "Pillow>=10.0.0",
-    "numpy>=1.26.0",
-    "safetensors>=0.4.2",
+    "accelerate>=1.13.0",
+    "pillow>=11.0",
+    "numpy>=2.0",
+    "safetensors>=0.5",
     "huggingface-hub>=0.21.0",
     "ultralytics>=8.0.0",
     "opencv-python-headless>=4.10",
-    "pillow>=11.0",
-    "safetensors>=0.5",
-    "transformers>=4.52",
+    "sentencepiece>=0.1.99",
+    "peft>=0.14.0",
     "ipykernel>=6.0",
-    "sentencepiece>=0.1.99"
-    # "torchvision>=0.24",
-]
-
-[project.optional-dependencies]
-ml = [
-    "accelerate>=1.13.0",
-    "diffusers[torch]>=0.38.0",
-    "numpy>=2.0",
-    "pillow>=11.0",
-    "safetensors>=0.5",
-    "transformers>=4.52",
 ]
 
 [project.scripts]
@@ -56,4 +41,19 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "ty>=0.0.46",
+]
+
+# linux-aarch64 (Isambard/Grace-Hopper) needs PyTorch wheels from the PyTorch
+# CUDA index; standard PyPI doesn't carry aarch64 CUDA builds.
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu128", marker = "platform_machine == 'aarch64' and sys_platform == 'linux'" },
+]
+torchvision = [
+    { index = "pytorch-cu128", marker = "platform_machine == 'aarch64' and sys_platform == 'linux'" },
 ]
