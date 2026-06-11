@@ -1,0 +1,4 @@
+"extra people, duplicates, cloned faces, added crowds, denser crowd, invented objects, props, "
+"signs, readable text, letters, numbers, logos, watermark, photorealism, 3d render, blur, "
+"smeared linework, muddy details, seams, grid, warped perspective, bad anatomy, extra limbs, "
+"malformed faces, color shift"
