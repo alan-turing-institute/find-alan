@@ -32,6 +32,7 @@ find-alan-prepare-examples = "find_alan.scripts.prepare_examples:main"
 find-alan-refine = "find_alan.scripts.refine:main"
 find-alan-crop-plan = "find_alan.scripts.crop_plan:main"
 find-alan-upscale = "find_alan.scripts.upscale:main"
+find-alan-plakat = "find_alan.scripts.plakat_tiled_upscale:main"
 find-alan-generate = "find_alan.scripts.generate:main"
 
 [build-system]
