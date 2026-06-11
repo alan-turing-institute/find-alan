@@ -11,6 +11,8 @@ import time
 import traceback
 from typing import Any
 
+from find_alan.constants import NEGATIVE_PROMPT_01, POSITIVE_PROMPT_01
+
 
 DEFAULT_INPUT_PATH = Path(
     "/lus/lfs1aip2/projects/u6ge/greder/bare-coordinate/outputs/upscaled/image_refined.png"
@@ -20,20 +22,8 @@ DEFAULT_OUTPUT_DIR = Path(
 )
 DEFAULT_FLUX_MODEL_ID = "black-forest-labs/FLUX.1-dev"
 
-DEFAULT_REFINEMENT_PROMPT = (
-    "Where's Wally illustration style, flat cartoon art, bold black outlines, "
-    "tiny distinct human figures each clearly separated with visible outlines, "
-    "every person has a clear silhouette and individual identity, "
-    "crisp clean linework, no merged figures, no blurry regions, "
-    "limited bright color palette red yellow blue beige, "
-    "isometric bird's eye view, dense crowd, Martin Handford style"
-)
-
-DEFAULT_REFINEMENT_NEGATIVE_PROMPT = (
-    "blurry, smeared, merged figures, indistinct blobs, artifacts, "
-    "distorted limbs, melted shapes, incoherent crowd, fuzzy, "
-    "photorealistic, 3d render, dark, moody"
-)
+DEFAULT_REFINEMENT_PROMPT = POSITIVE_PROMPT_01
+DEFAULT_REFINEMENT_NEGATIVE_PROMPT = NEGATIVE_PROMPT_01
 
 
 class MissingMLDependencies(RuntimeError):

@@ -22,6 +22,7 @@ def read_prompt_file(filename: str) -> str:
 
 
 POSTIVE_PROMPT_01 = read_prompt_file("styles/1-waldo-cartoon.txt")
+POSITIVE_PROMPT_01 = POSTIVE_PROMPT_01
 NEGATIVE_PROMPT_01 = read_prompt_file("NEGATIVE.txt")
 UPSCALE_PROMPT_01 = read_prompt_file("upscale/upscale_01.txt")
 UPSCALE_NEGATIVE_PROMPT_01 = read_prompt_file("upscale/negative_01.txt")
