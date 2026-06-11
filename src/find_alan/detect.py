@@ -53,7 +53,10 @@ def detect_people(
 
     Boxes are in pixel coordinates relative to *scene*.
     """
-    results = detector(scene, classes=[_PERSON_CLASS], verbose=False)
+    # YOLO-World: classes already restricted via set_classes(); don't filter by index.
+    # Standard YOLO: filter to COCO person class (0) to ignore other detections.
+    kwargs = {} if hasattr(detector, "set_classes") else {"classes": [_PERSON_CLASS]}
+    results = detector(scene, verbose=False, **kwargs)
     bboxes: list[tuple[int, int, int, int]] = []
     for r in results:
         for box in r.boxes:
@@ -75,7 +78,8 @@ def detect_people_with_masks(
     black elsewhere.  Falls back to a filled rectangle if the model returns
     no polygon for a detection.
     """
-    results = detector(scene, classes=[_PERSON_CLASS], verbose=False)
+    kwargs = {} if hasattr(detector, "set_classes") else {"classes": [_PERSON_CLASS]}
+    results = detector(scene, verbose=False, **kwargs)
     detections: list[tuple[tuple[int, int, int, int], Image.Image]] = []
     w, h = scene.size
 
