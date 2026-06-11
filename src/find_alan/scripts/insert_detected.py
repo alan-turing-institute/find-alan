@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import random
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter
 
 from find_alan.detect import (
     detect_people,
@@ -76,10 +76,23 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--padding",
         type=float,
-        default=0.15,
+        default=1.0,
         metavar="FLOAT",
         help=(
-            "Fraction of bbox size to add around the crop. Default: 0.15."
+            "Fraction of bbox size to add around the crop on each side."
+            " Larger values give FLUX.2-Klein more scene context."
+            " Default: 1.0."
+        ),
+    )
+    p.add_argument(
+        "--feather",
+        type=int,
+        default=30,
+        metavar="PIXELS",
+        help=(
+            "Radius (px) of the Gaussian blur applied to the composite"
+            " mask edges. Softens the boundary between the generated"
+            " region and the original scene. Default: 30."
         ),
     )
     p.add_argument(
@@ -205,8 +218,18 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
     )
 
+    # Feathered composite: white centre fades to black at the crop edges so
+    # the boundary blends into the surrounding scene rather than forming a
+    # hard rectangular seam.
+    result_sized = result_crop.resize((pw, ph), Image.LANCZOS)
+    feather = args.feather
+    paste_mask = Image.new("L", (pw, ph), 0)
+    inner = [feather, feather, pw - feather, ph - feather]
+    ImageDraw.Draw(paste_mask).rectangle(inner, fill=255)
+    paste_mask = paste_mask.filter(ImageFilter.GaussianBlur(radius=feather))
+
     result = scene.copy()
-    result.paste(result_crop.resize((pw, ph), Image.LANCZOS), (px, py))
+    result.paste(result_sized, (px, py), mask=paste_mask)
 
     from pathlib import Path
     output_path = Path(args.output)
