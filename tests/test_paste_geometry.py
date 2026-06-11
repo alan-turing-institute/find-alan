@@ -14,7 +14,9 @@ from find_alan.paste import (
     build_writable_mask,
     compute_crop_box,
     compute_paste_box,
+    filter_selectable,
     paste_figure,
+    selection_zones,
 )
 
 
@@ -43,6 +45,17 @@ def test_paste_box_is_centered_and_bottom_aligned():
     # paste height == bbox height, so top aligns with bbox top (y0 == 500).
     box = compute_paste_box((1000, 500, 80, 400), (100, 200))
     assert box == (940, 500, 1140, 900)
+
+
+def test_paste_box_scale_grows_upward_from_bbox_base():
+    # scale 1.10 on a bbox of height 400 -> paste height 440, base unchanged.
+    base = compute_paste_box((1000, 500, 80, 400), (100, 200))
+    scaled = compute_paste_box((1000, 500, 80, 400), (100, 200), 1.10)
+    assert (scaled[3] - scaled[1]) == 440  # 10% taller
+    assert scaled[3] == base[3] == 900  # base (bottom) stays on the bbox base
+    assert scaled[1] < base[1]  # grows upward
+    # aspect preserved: width scales with height.
+    assert (scaled[2] - scaled[0]) == round(100 * 440 / 200)
 
 
 def test_paste_box_rejects_degenerate_input():
@@ -139,6 +152,49 @@ def test_mask_leaves_lower_figure_writable():
     low_cx = (paste[0] + paste[2]) // 2 - crop[0]
     low_cy = paste[1] + int((paste[3] - paste[1]) * 0.9) - crop[1]
     assert mask.getpixel((low_cx, low_cy)) > 200
+
+
+# --------------------------------------------------------------------------- #
+# selection_zones / filter_selectable
+# --------------------------------------------------------------------------- #
+
+
+def test_selection_zones_geometry():
+    safe, logo = selection_zones((2048, 2048), 0.05, 0.10)
+    assert safe == (102, 102, 1946, 1946)
+    assert logo == (0, 0, 205, 205)
+
+
+def test_filter_keeps_central_person():
+    # Figure 100x200; central person well inside the safe area, away from logo.
+    bbox = (1000, 1000, 80, 300)
+    kept = filter_selectable([bbox], (100, 200), (2048, 2048), 0.05, 0.10)
+    assert kept == [bbox]
+
+
+def test_filter_rejects_person_against_bottom_edge():
+    # The originally-chosen person: bottom at 2046, inside the 5% margin.
+    bbox = (1215, 1862, 95, 184)
+    kept = filter_selectable([bbox], (1754, 2480), (2048, 2048), 0.05, 0.10)
+    assert kept == []
+
+
+def test_filter_rejects_person_in_logo_block():
+    # A person whose figure box sits in the top-left logo zone.
+    bbox = (40, 40, 60, 120)
+    kept = filter_selectable([bbox], (100, 200), (2048, 2048), 0.05, 0.10)
+    assert kept == []
+
+
+def test_filter_accounts_for_alan_horizontal_overhang():
+    # bbox clears the right margin, but a wide figure's centred paste box would
+    # overhang past it into the margin -> rejected.
+    safe, _ = selection_zones((2048, 2048), 0.05, 0.10)
+    # Place the bbox so its right edge is just inside safe, then use a very wide
+    # figure so the paste box (centred, wider) pushes past the safe edge.
+    bbox = (safe[2] - 100, 1000, 90, 300)  # right edge at safe[2]-10
+    kept = filter_selectable([bbox], (400, 200), (2048, 2048), 0.05, 0.10)
+    assert kept == []
 
 
 # --------------------------------------------------------------------------- #

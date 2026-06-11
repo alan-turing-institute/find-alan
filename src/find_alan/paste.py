@@ -67,11 +67,24 @@ class PasteAlanConfig:
     output_dir: Path = DEFAULT_OUTPUT_DIR
     output_name: str = "conference_alan"
 
-    # Detection / target selection.
+    # Detection / target selection. yolov8x (not the nano default elsewhere):
+    # the tiny figures in a dense crowd scene need the largest model to be
+    # found at all — nano detects almost none.
     strategy: str = "random"
-    conf_threshold: float = 0.3
-    yolo_model: str = "yolov8n"
-    seed: int = 42
+    conf_threshold: float = 0.2
+    yolo_model: str = "yolov8x"
+    seed: int = None
+
+    # Selection no-go zones (fractions of the image). A candidate is rejected if
+    # its figure box (person bbox + Alan's paste box) reaches into the edge
+    # margin or overlaps the top-left logo block, so the pasted figure stays
+    # fully on-screen and clear of a logo added later.
+    edge_margin: float = 0.05
+    logo_zone: float = 0.10
+
+    # Figure sizing. Detector boxes clip the person, so scale Alan up relative
+    # to the bbox height (bottom-aligned, grows upward).
+    figure_scale: float = 1.10
 
     # Crop geometry (fractions of the figure box on each side).
     gap_padding: float = 0.4
@@ -84,7 +97,8 @@ class PasteAlanConfig:
     dilate: int = 8  # grow protected silhouette before feathering
     feather: int = 8
 
-    # Refinement (kept gentle so neighbouring figures don't pick up artifacts).
+    # Refinement. strength = fraction of noise added to the writable region;
+    # 0.7 redraws it enough to clear leftover artifacts around the figure.
     model_id: str = DEFAULT_FLUX_MODEL_ID
     prompt: str = DEFAULT_PASTE_PROMPT
     negative_prompt: str = DEFAULT_PASTE_NEGATIVE_PROMPT
@@ -115,23 +129,24 @@ class PasteAlanResult:
 # --------------------------------------------------------------------------- #
 
 
-def compute_paste_box(bbox: Box, figure_size: tuple[int, int]) -> Box:
-    """Place *figure* over *bbox*: fit bbox height, keep aspect, bottom-aligned.
+def compute_paste_box(bbox: Box, figure_size: tuple[int, int], scale: float = 1.0) -> Box:
+    """Place *figure* over *bbox*: fit bbox height x *scale*, keep aspect, bottom-aligned.
 
     *bbox* is (x, y, w, h). Returns (x0, y0, x1, y1). The figure is centred
-    horizontally on the bbox and its base sits on the bbox base, so for a
-    figure scaled to the bbox height the top edge coincides with the bbox top.
+    horizontally on the bbox and its base sits on the bbox base; *scale* > 1
+    enlarges it (it grows upward), useful because detector boxes tend to clip
+    the figure. With scale 1.0 the top edge coincides with the bbox top.
     """
     x, y, w, h = bbox
     fw, fh = figure_size
     if fh <= 0 or h <= 0:
         raise ValueError("bbox height and figure height must be positive")
 
-    paste_h = h
-    paste_w = max(1, round(fw * h / fh))
+    paste_h = max(1, round(h * scale))
+    paste_w = max(1, round(fw * paste_h / fh))
     cx = x + w / 2
     px0 = round(cx - paste_w / 2)
-    py0 = y + h - paste_h  # == y when paste_h == h
+    py0 = y + h - paste_h  # base stays on the bbox base
     return (px0, py0, px0 + paste_w, py0 + paste_h)
 
 
@@ -211,6 +226,57 @@ def bbox_to_xyxy(bbox: Box) -> Box:
     """Convert an (x, y, w, h) bbox to (x0, y0, x1, y1)."""
     x, y, w, h = bbox
     return (x, y, x + w, y + h)
+
+
+def _overlaps(a: Box, b: Box) -> bool:
+    """True when two (x0, y0, x1, y1) boxes share any area."""
+    return a[0] < b[2] and a[2] > b[0] and a[1] < b[3] and a[3] > b[1]
+
+
+def selection_zones(
+    image_size: tuple[int, int], edge_margin: float, logo_zone: float
+) -> tuple[Box, Box]:
+    """Return ``(safe_area, logo_block)`` in pixels for the given image.
+
+    *safe_area* is the image inset by *edge_margin* on every side; *logo_block*
+    is the top-left rectangle of size *logo_zone* x *logo_zone*.
+    """
+    iw, ih = image_size
+    mx, my = round(iw * edge_margin), round(ih * edge_margin)
+    safe_area = (mx, my, iw - mx, ih - my)
+    logo_block = (0, 0, round(iw * logo_zone), round(ih * logo_zone))
+    return safe_area, logo_block
+
+
+def filter_selectable(
+    bboxes: list[Box],
+    figure_size: tuple[int, int],
+    image_size: tuple[int, int],
+    edge_margin: float,
+    logo_zone: float,
+    figure_scale: float = 1.0,
+) -> list[Box]:
+    """Keep only person bboxes whose figure box is on-screen and clear of the logo.
+
+    The figure box is the union of the person bbox and Alan's paste box (at
+    *figure_scale*), so the check covers everything that will actually be drawn.
+    *bboxes* are (x, y, w, h); the return preserves that form and order.
+    """
+    safe_area, logo_block = selection_zones(image_size, edge_margin, logo_zone)
+    kept: list[Box] = []
+    for bbox in bboxes:
+        figure_box = _union(
+            bbox_to_xyxy(bbox), compute_paste_box(bbox, figure_size, figure_scale)
+        )
+        inside_safe = (
+            figure_box[0] >= safe_area[0]
+            and figure_box[1] >= safe_area[1]
+            and figure_box[2] <= safe_area[2]
+            and figure_box[3] <= safe_area[3]
+        )
+        if inside_safe and not _overlaps(figure_box, logo_block):
+            kept.append(bbox)
+    return kept
 
 
 def build_writable_mask(
@@ -340,12 +406,32 @@ def run_paste_alan(
     bboxes = detect_people(detector, scene, conf_threshold=config.conf_threshold)
     if not bboxes:
         raise ValueError("No people detected; try lowering conf_threshold.")
-    _emit(progress, f"Found {len(bboxes)} person(s); picking with strategy='{config.strategy}'")
+
+    selectable = filter_selectable(
+        bboxes,
+        figure.size,
+        scene.size,
+        config.edge_margin,
+        config.logo_zone,
+        config.figure_scale,
+    )
+    if not selectable:
+        raise ValueError(
+            f"Found {len(bboxes)} person(s), but none clear the "
+            f"{config.edge_margin:.0%} edge margin and {config.logo_zone:.0%} "
+            "top-left logo block. Loosen --edge-margin/--logo-zone or use a "
+            "scene with more central figures."
+        )
+    _emit(
+        progress,
+        f"Found {len(bboxes)} person(s); {len(selectable)} selectable after "
+        f"edge/logo filtering; picking with strategy='{config.strategy}'",
+    )
 
     rng = random.Random(config.seed)
-    person_bbox = pick_target(bboxes, strategy=config.strategy, scene_size=scene.size, rng=rng)
+    person_bbox = pick_target(selectable, strategy=config.strategy, scene_size=scene.size, rng=rng)
 
-    paste_box = compute_paste_box(person_bbox, figure.size)
+    paste_box = compute_paste_box(person_bbox, figure.size, config.figure_scale)
     crop_box, gap_box = compute_crop_box(
         person_bbox, paste_box, scene.size, config.gap_padding, config.border_padding
     )

@@ -52,10 +52,13 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["random", "largest", "smallest", "center"],
         help="Which detected person to replace. Default: random.",
     )
-    p.add_argument("--conf", type=float, default=0.3, help="YOLO confidence threshold. Default: 0.3.")
-    p.add_argument("--yolo-model", default="yolov8n", help="YOLOv8 variant. Default: yolov8n.")
+    p.add_argument("--conf", type=float, default=0.2, help="YOLO confidence threshold. Default: 0.2.")
+    p.add_argument("--yolo-model", default="yolov8x", help="YOLOv8 variant (x needed for tiny crowd figures). Default: yolov8x.")
     p.add_argument("--seed", type=int, default=42, help="Seed for target pick and generator. Default: 42.")
+    p.add_argument("--edge-margin", type=float, default=0.05, help="Edge fraction where the figure may not land. Default: 0.05.")
+    p.add_argument("--logo-zone", type=float, default=0.10, help="Top-left fraction reserved for a logo. Default: 0.10.")
 
+    p.add_argument("--figure-scale", type=float, default=1.10, help="Scale Alan relative to the bbox height (boxes clip). Default: 1.10.")
     p.add_argument("--gap-padding", type=float, default=0.4, help="Writable gap ring, fraction of figure. Default: 0.4.")
     p.add_argument("--border-padding", type=float, default=0.2, help="Frozen border ring, fraction. Default: 0.2.")
     p.add_argument("--crop-size", type=int, default=512, help="Inference resolution (mult. of 16). Default: 512.")
@@ -68,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model-id", default=DEFAULT_FLUX_MODEL_ID, help="Flux inpaint model id.")
     p.add_argument("--prompt", default=None, help="Override the paste prompt.")
     p.add_argument("--negative-prompt", default=None, help="Override the negative prompt.")
-    p.add_argument("--strength", type=float, default=0.4, help="Inpaint strength (gentle). Default: 0.4.")
+    p.add_argument("--strength", type=float, default=0.7, help="Inpaint strength = noise fraction in the writable region. Default: 0.7.")
     p.add_argument("--steps", type=int, default=28, help="Inference steps. Default: 28.")
     p.add_argument("--guidance-scale", type=float, default=3.5, help="CFG scale. Default: 3.5.")
     p.add_argument("--device", default="cuda:0", help="Torch device. Default: cuda:0.")
@@ -88,6 +91,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         conf_threshold=args.conf,
         yolo_model=args.yolo_model,
         seed=args.seed,
+        edge_margin=args.edge_margin,
+        logo_zone=args.logo_zone,
+        figure_scale=args.figure_scale,
         gap_padding=args.gap_padding,
         border_padding=args.border_padding,
         crop_size=args.crop_size,

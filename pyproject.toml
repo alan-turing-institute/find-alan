@@ -28,6 +28,7 @@ find-alan-gui = "find_alan.scripts.gui:main"
 find-alan-inpaint = "find_alan.scripts.inpaint:main"
 find-alan-insert = "find_alan.scripts.insert:main"
 find-alan-insert-detected = "find_alan.scripts.insert_detected:main"
+find-alan-paste = "find_alan.scripts.paste_alan:main"
 find-alan-prepare-examples = "find_alan.scripts.prepare_examples:main"
 find-alan-refine = "find_alan.scripts.refine:main"
 find-alan-crop-plan = "find_alan.scripts.crop_plan:main"
@@ -38,9 +39,18 @@ find-alan-generate = "find_alan.scripts.generate:main"
 requires = ["uv_build>=0.11.19,<0.12.0"]
 build-backend = "uv_build"
 
+[tool.uv]
+# ultralytics depends on the full opencv-python, whose cv2 links libGL.so.1 —
+# absent on this headless node. Drop it (always-false marker) so the explicit
+# opencv-python-headless dependency provides cv2 instead.
+override-dependencies = [
+    "opencv-python; sys_platform == 'never'",
+]
+
 [dependency-groups]
 dev = [
     "ty>=0.0.46",
+    "pytest>=8.0",
 ]
 
 # linux-aarch64 (Isambard/Grace-Hopper) needs PyTorch wheels from the PyTorch

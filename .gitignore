@@ -17,5 +17,7 @@ htmlcov/
 outputs/
 data
 AGENT_PLAN.md
+HF_cache
+*.pt
 
 core
