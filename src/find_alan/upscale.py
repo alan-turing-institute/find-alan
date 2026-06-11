@@ -6,11 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .constants import NEGATIVE_PROMPT_01, POSTIVE_PROMPT_01
+from .constants import UPSCALE_NEGATIVE_PROMPT_01, UPSCALE_PROMPT_01
 
 
-DEFAULT_PROMPT = POSTIVE_PROMPT_01
-DEFAULT_NEGATIVE_PROMPT = NEGATIVE_PROMPT_01
+DEFAULT_PROMPT = UPSCALE_PROMPT_01
+DEFAULT_NEGATIVE_PROMPT = UPSCALE_NEGATIVE_PROMPT_01
 DEFAULT_MOD_MODEL_ID = "SG161222/RealVisXL_V5.0"
 DEFAULT_FLUX2_MODEL_ID = "black-forest-labs/FLUX.2-dev"
 DEFAULT_SD3_MODEL_ID = "stabilityai/stable-diffusion-3.5-large"
