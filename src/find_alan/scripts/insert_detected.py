@@ -63,13 +63,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--output",
-        default=None,
+        required=True,
         metavar="PATH",
-        help=(
-            "Where to save the result. If omitted, saves to"
-            " examples/final_<seed>.png (or examples/final_random.png"
-            " when no --seed is given)."
-        ),
+        help="Where to save the result.",
     )
 
     p.add_argument(
@@ -379,11 +375,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from pathlib import Path
 
-    if args.output is not None:
-        output_path = Path(args.output)
-    else:
-        seed_str = str(args.seed) if args.seed is not None else "random"
-        output_path = Path("examples") / f"final_{seed_str}.png"
+    output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     result.save(output_path)
     print(f"Saved → {output_path}")
