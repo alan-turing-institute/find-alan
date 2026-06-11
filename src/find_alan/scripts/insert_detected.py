@@ -17,15 +17,18 @@ import random
 
 from PIL import Image
 
-from find_alan.detect import detect_people, load_detector, pad_bbox, pick_target
+from find_alan.detect import (
+    detect_people,
+    load_detector,
+    pad_bbox,
+    pick_target,
+)
 from find_alan.insert import load_pipeline, run_insertion
 from find_alan.mask import bbox_to_mask
 
 _DETECTION_PROMPT = (
-    "A crowd scene in which one of the figures is the person from the"
-    " reference image. The person matches the scale, pose, perspective, and"
-    " lighting of the surrounding crowd. Preserve the full body of the"
-    " reference figure. Blend the edges naturally with the background."
+    "Replace the person in this image with the person"
+    " from the reference image."
 )
 
 
@@ -33,21 +36,30 @@ def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="find-alan-insert-detected",
         description=(
-            "Detect a person in the scene with YOLOv8 and replace them with"
-            " the reference figure using FLUX.2-Klein.\n\n"
-            "Scale is correct by construction: the inpaint region is sized to"
-            " a real crowd member, so the model fills it at the right size.\n\n"
+            "Detect a person in the scene with YOLOv8 and replace them"
+            " with the reference figure using FLUX.2-Klein.\n\n"
+            "The detected region is cropped and passed to FLUX.2-Klein as"
+            " the full scene, so the model fills it at the right scale.\n\n"
             "Example:\n"
-            "  find-alan-insert-detected --scene crowd.png --figure alan.png"
-            " \\\n"
+            "  find-alan-insert-detected --scene crowd.png"
+            " --figure alan.png \\\n"
             "    --output result.png --strategy largest"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    p.add_argument("--scene", required=True, metavar="PATH", help="Crowd/background scene image.")
-    p.add_argument("--figure", required=True, metavar="PATH", help="Reference figure to insert.")
-    p.add_argument("--output", required=True, metavar="PATH", help="Where to save the result.")
+    p.add_argument(
+        "--scene", required=True, metavar="PATH",
+        help="Crowd/background scene image.",
+    )
+    p.add_argument(
+        "--figure", required=True, metavar="PATH",
+        help="Reference figure to insert.",
+    )
+    p.add_argument(
+        "--output", required=True, metavar="PATH",
+        help="Where to save the result.",
+    )
 
     p.add_argument(
         "--strategy",
@@ -55,8 +67,9 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["random", "largest", "smallest", "center"],
         help=(
             "Which detected person to replace. "
-            "'random' picks any; 'largest' picks the biggest (most context for blending); "
-            "'smallest' picks the least prominent; 'center' picks the one nearest the image centre. "
+            "'random' picks any; 'largest' picks the biggest; "
+            "'smallest' picks the least prominent; "
+            "'center' picks the one nearest the image centre. "
             "Default: random."
         ),
     )
@@ -65,7 +78,9 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.15,
         metavar="FLOAT",
-        help="Fraction of bbox size to expand the mask for edge blending. Default: 0.15.",
+        help=(
+            "Fraction of bbox size to add around the crop. Default: 0.15."
+        ),
     )
     p.add_argument(
         "--conf",
@@ -91,9 +106,12 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.99,
         metavar="FLOAT",
-        help="How much the masked region can change (0–1). Default: 0.99.",
+        help="How much the crop can change (0–1). Default: 0.99.",
     )
-    p.add_argument("--steps", type=int, default=50, metavar="INT", help="Inference steps. Default: 50.")
+    p.add_argument(
+        "--steps", type=int, default=50, metavar="INT",
+        help="Inference steps. Default: 50.",
+    )
     p.add_argument(
         "--guidance-scale",
         type=float,
@@ -101,15 +119,19 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="FLOAT",
         help="CFG scale. Default: 10.0.",
     )
-    p.add_argument("--seed", type=int, default=None, metavar="INT", help="Reproducibility seed.")
     p.add_argument(
-        "--device", default=None, metavar="DEVICE", help="cuda | mps | cpu  (auto-detected if omitted)."
+        "--seed", type=int, default=None, metavar="INT",
+        help="Reproducibility seed.",
+    )
+    p.add_argument(
+        "--device", default=None, metavar="DEVICE",
+        help="cuda | mps | cpu  (auto-detected if omitted).",
     )
     p.add_argument(
         "--save-mask",
         metavar="PATH",
         default=None,
-        help="Optionally save the generated mask image for inspection.",
+        help="Optionally save the bbox mask image for inspection.",
     )
     return p
 
@@ -120,15 +142,21 @@ def main(argv: list[str] | None = None) -> int:
     scene = Image.open(args.scene).convert("RGB")
     figure = Image.open(args.figure).convert("RGB")
 
-    print(f"Detecting people in scene (YOLO {args.yolo_model}, conf≥{args.conf})...")
+    print(
+        f"Detecting people in scene"
+        f" (YOLO {args.yolo_model}, conf≥{args.conf})..."
+    )
     detector = load_detector(args.yolo_model)
     bboxes = detect_people(detector, scene, conf_threshold=args.conf)
 
     if not bboxes:
-        print("No people detected. Try lowering --conf or check the scene image.")
+        print("No people detected. Try lowering --conf or check the scene.")
         return 1
 
-    print(f"Found {len(bboxes)} person(s). Picking target with strategy='{args.strategy}'...")
+    print(
+        f"Found {len(bboxes)} person(s)."
+        f" Picking target with strategy='{args.strategy}'..."
+    )
 
     rng = random.Random(args.seed) if args.seed is not None else None
     target_bbox = pick_target(
@@ -153,14 +181,16 @@ def main(argv: list[str] | None = None) -> int:
 
     # Crop the scene to the padded detection region and run FLUX.2-Klein on
     # that crop.  Because the crop IS the entire scene the model sees, the
-    # reference figure must appear somewhere within it rather than being placed
-    # at an arbitrary location in the full image.  We then paste the result
-    # back into the original scene at the detection coordinates.
+    # reference figure must appear somewhere within it rather than being
+    # placed at an arbitrary location in the full image.  We then paste the
+    # result back into the original scene at the detection coordinates.
     crop_box = (px, py, px + pw, py + ph)
     scene_crop = scene.crop(crop_box)
     print(f"Cropped scene to detection region: {scene_crop.size}")
 
-    print("Loading pipeline (FLUX.2-Klein, ~13 GB, downloaded on first run)...")
+    print(
+        "Loading pipeline (FLUX.2-Klein, ~13 GB, downloaded on first run)..."
+    )
     pipe = load_pipeline(device=args.device)
 
     print("Running FLUX.2-Klein on detection crop...")
