@@ -63,13 +63,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--output",
-        default=None,
+        required=True,
         metavar="PATH",
-        help=(
-            "Where to save the result. If omitted, saves to"
-            " examples/final_<seed>.png (or examples/final_random.png"
-            " when no --seed is given)."
-        ),
+        help="Where to save the result.",
     )
 
     p.add_argument(
@@ -208,28 +204,6 @@ def _build_parser() -> argparse.ArgumentParser:
             " final image for quick visual verification."
         ),
     )
-    p.add_argument(
-        "--edge-margin",
-        type=float,
-        default=0.05,
-        metavar="FLOAT",
-        help=(
-            "Fraction of image dimensions to exclude from each edge during"
-            " detection. The scene is cropped to (1-2*margin) before YOLO"
-            " runs, so figures near the border are ignored. Default: 0.05."
-        ),
-    )
-    p.add_argument(
-        "--reserved-corner",
-        type=float,
-        default=0.10,
-        metavar="FLOAT",
-        help=(
-            "Fraction of image dimensions to keep free in the top-left corner."
-            " Detections overlapping this region are discarded, and the corner"
-            " is always restored from the original after inpainting. Default: 0.10."
-        ),
-    )
     return p
 
 
@@ -244,44 +218,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     detector = load_detector(args.yolo_model, classes=args.detection_classes)
 
-    # Crop to inner region so figures within edge_margin of any border are ignored.
-    sw, sh = scene.size
-    mx = int(sw * args.edge_margin)
-    my = int(sh * args.edge_margin)
-    detection_scene = scene.crop((mx, my, sw - mx, sh - my))
-
     seg_mask: Image.Image | None = None
     if args.segmentation:
-        raw = detect_people_with_masks(detector, detection_scene, conf_threshold=args.conf)
-        if not raw:
-            print("No people detected. Try lowering --conf or check the scene image.")
+        detections = detect_people_with_masks(detector, scene, conf_threshold=args.conf)
+        if not detections:
+            print(
+                "No people detected. Try lowering --conf or check the" " scene image."
+            )
             return 1
-        # Offset bboxes and re-embed masks into full scene coordinate space.
-        detections = []
-        for (x, y, w, h), inner_mask in raw:
-            full_mask_img = Image.new("L", scene.size, 0)
-            full_mask_img.paste(inner_mask, (mx, my))
-            detections.append(((x + mx, y + my, w, h), full_mask_img))
         bboxes = [bbox for bbox, _ in detections]
         seg_masks = {bbox: mask for bbox, mask in detections}
     else:
-        raw_bboxes = detect_people(detector, detection_scene, conf_threshold=args.conf)
-        if not raw_bboxes:
-            print("No people detected. Try lowering --conf or check the scene image.")
-            return 1
-        bboxes = [(x + mx, y + my, w, h) for x, y, w, h in raw_bboxes]
+        bboxes = detect_people(detector, scene, conf_threshold=args.conf)
         seg_masks = {}
-
-    # Discard any detections that overlap the reserved top-left corner.
-    cw = int(sw * args.reserved_corner)
-    ch = int(sh * args.reserved_corner)
-    bboxes = [b for b in bboxes if not (b[0] < cw and b[1] < ch)]
-    if not bboxes:
-        print(
-            "No suitable persons found after applying edge margin and corner"
-            " exclusion. Try --edge-margin 0 or --reserved-corner 0."
-        )
-        return 1
+        if not bboxes:
+            print(
+                "No people detected. Try lowering --conf or check the" " scene image."
+            )
+            return 1
 
     print(
         f"Found {len(bboxes)} person(s)."
@@ -361,32 +315,32 @@ def main(argv: list[str] | None = None) -> int:
     result = scene.copy()
     result.paste(result_sized, (px, py), mask=paste_mask)
 
-    # Always restore the reserved top-left corner from the original scene.
-    result.paste(scene.crop((0, 0, cw, ch)), (0, 0))
+    from pathlib import Path
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if args.test:
-        # Visual debug aid: show where the inpainted crop was pasted.
+        result.save(output_path)
+        print(f"Saved → {output_path}")
+
+        # Visual debug aid: draw red outline and save as a separate _box image.
         line_width = max(2, min(scene.size) // 300)
-        ImageDraw.Draw(result).rectangle(
+        box_result = result.copy()
+        ImageDraw.Draw(box_result).rectangle(
             (px, py, px + pw - 1, py + ph - 1),
             outline=(255, 0, 0),
             width=line_width,
         )
+        box_path = output_path.with_stem(output_path.stem + "_box")
+        box_result.save(box_path)
         print(
-            "[test] Drew red outline around inpainted region "
+            f"[test] Saved bounding box image → {box_path} "
             f"(x={px}, y={py}, w={pw}, h={ph})"
         )
-
-    from pathlib import Path
-
-    if args.output is not None:
-        output_path = Path(args.output)
     else:
-        seed_str = str(args.seed) if args.seed is not None else "random"
-        output_path = Path("examples") / f"final_{seed_str}.png"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    result.save(output_path)
-    print(f"Saved → {output_path}")
+        result.save(output_path)
+        print(f"Saved → {output_path}")
     return 0
 
 
