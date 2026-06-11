@@ -392,3 +392,43 @@ Key options:
 ```sh
 uv run find-alan-insert-detected --help
 ```
+
+## Current Upscale Experiment Settings
+
+### Flux2 source images, SDXL MultiDiffusion 3x display batch
+
+The Flux2-style source images in `data/examples/lr/flux2` are being upscaled for large-screen review with SDXL ControlNet MultiDiffusion, not Flux2. The queued batch writes to `data/examples/out/flux2`.
+
+Queued batch suffix:
+
+```text
+c31d3a8a_rb826e0f
+```
+
+Output naming pattern:
+
+```text
+data/examples/out/flux2/<source_stem>_sdxl_md_3x_upscaleprompt_d075_c035_tile1024_c31d3a8a_rb826e0f.png
+```
+
+Settings:
+
+```sh
+uv run find-alan-upscale input.png output.png \
+  --engine multidiffusion \
+  --scale 3 \
+  --steps 28 \
+  --denoising-strength 0.75 \
+  --controlnet-strength 0.35 \
+  --guidance-scale 4.5 \
+  --md-tile-size 1024 \
+  --md-overlap 512 \
+  --md-jitter 256
+```
+
+Rationale:
+
+- `3x` turns the `1920x1072` sources into roughly `5760x3216`, which is better suited to large-screen display than `2x`.
+- `1024` tiles with `512` overlap keep the setting consistent with the best conference SDXL MultiDiffusion runs and prioritize seam control.
+- `denoising-strength 0.75` and `controlnet-strength 0.35` are the current preferred balance for adding detail while keeping the crowd layout anchored.
+- Refinement is intentionally not queued for this batch yet; inspect the 3x bases first, then refine selected outputs.
