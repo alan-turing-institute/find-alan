@@ -18,14 +18,14 @@ import random
 from PIL import Image
 
 from find_alan.detect import detect_people, load_detector, pad_bbox, pick_target
-from find_alan.insert import DEFAULT_PROMPT, load_pipeline, run_insertion
+from find_alan.insert import load_pipeline, run_insertion
 from find_alan.mask import bbox_to_mask
 
 _DETECTION_PROMPT = (
-    "Replace the person in the masked area with the reference figure."
-    " Match the scale, pose, perspective, and lighting of the surrounding"
-    " crowd exactly. Preserve the full body of the reference figure."
-    " Blend the edges naturally with the background."
+    "A crowd scene in which one of the figures is the person from the"
+    " reference image. The person matches the scale, pose, perspective, and"
+    " lighting of the surrounding crowd. Preserve the full body of the"
+    " reference figure. Blend the edges naturally with the background."
 )
 
 
@@ -144,29 +144,39 @@ def main(argv: list[str] | None = None) -> int:
     px, py, pw, ph = padded_bbox
     print(f"Padded bbox (x={px}, y={py}, w={pw}, h={ph})")
 
-    mask = bbox_to_mask(scene.size, padded_bbox)
-
     if args.save_mask:
         from pathlib import Path
+        mask = bbox_to_mask(scene.size, padded_bbox)
         Path(args.save_mask).parent.mkdir(parents=True, exist_ok=True)
         mask.save(args.save_mask)
         print(f"Mask saved → {args.save_mask}")
 
+    # Crop the scene to the padded detection region and run FLUX.2-Klein on
+    # that crop.  Because the crop IS the entire scene the model sees, the
+    # reference figure must appear somewhere within it rather than being placed
+    # at an arbitrary location in the full image.  We then paste the result
+    # back into the original scene at the detection coordinates.
+    crop_box = (px, py, px + pw, py + ph)
+    scene_crop = scene.crop(crop_box)
+    print(f"Cropped scene to detection region: {scene_crop.size}")
+
     print("Loading pipeline (FLUX.2-Klein, ~13 GB, downloaded on first run)...")
     pipe = load_pipeline(device=args.device)
 
-    print("Running inpainting...")
-    result = run_insertion(
+    print("Running FLUX.2-Klein on detection crop...")
+    result_crop = run_insertion(
         pipe=pipe,
-        scene=scene,
+        scene=scene_crop,
         figure=figure,
-        mask=mask,
         prompt=args.prompt,
         strength=args.strength,
         num_inference_steps=args.steps,
         guidance_scale=args.guidance_scale,
         seed=args.seed,
     )
+
+    result = scene.copy()
+    result.paste(result_crop.resize((pw, ph), Image.LANCZOS), (px, py))
 
     from pathlib import Path
     output_path = Path(args.output)

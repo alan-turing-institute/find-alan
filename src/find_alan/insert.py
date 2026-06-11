@@ -69,7 +69,6 @@ def run_insertion(
     pipe: Flux2KleinInpaintPipeline,
     scene: Image.Image,
     figure: Image.Image,
-    mask: Image.Image | None = None,
     prompt: str = DEFAULT_PROMPT,
     strength: float = 0.75,
     num_inference_steps: int = 50,
@@ -79,9 +78,7 @@ def run_insertion(
     """
     Insert *figure* into *scene*.
 
-    If *mask* is None an all-white mask is used and the model infers placement
-    from the prompt and scene context.  Pass a greyscale mask (white = repaint)
-    to restrict the edit to a specific region, e.g. a detected bounding box.
+    The model infers placement from the prompt and scene context.
     *strength* controls how much the scene is allowed to change (0–1);
     lower values preserve more of the original.
     """
@@ -90,16 +87,6 @@ def run_insertion(
         generator = torch.Generator(device=pipe._execution_device).manual_seed(seed)
 
     w, h = scene.size
-
-    if mask is None:
-        mask = Image.new("L", (w, h), 255)
-
-    # Keep the caller-supplied mask for compositing; pass a full mask to the
-    # pipeline so FLUX.2-Klein can generate the whole scene with the reference
-    # figure placed naturally.  We then composite only the caller's region onto
-    # the original, which (a) anchors the insertion to the detected bbox and
-    # (b) preserves the background pixel-perfectly outside that region.
-    caller_mask = mask
     full_mask = Image.new("L", (w, h), 255)
 
     result = pipe(
@@ -115,6 +102,4 @@ def run_insertion(
         generator=generator,
     ).images[0]
 
-    result_full = result.resize((w, h), Image.LANCZOS)
-    composite_mask = caller_mask.convert("L").resize((w, h), Image.LANCZOS)
-    return Image.composite(result_full, scene.convert("RGB"), composite_mask)
+    return result
