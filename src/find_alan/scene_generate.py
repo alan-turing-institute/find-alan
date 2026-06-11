@@ -558,6 +558,7 @@ class SingleImageConfig:
     generator_device: str = "cuda:0"
     torch_dtype_str: str = "bfloat16"
     width: int = 2048
+    # width: int = 4096 # try for double width
     height: int = 2048
     steps: int = 28
     guidance_scale: float = 3.5
