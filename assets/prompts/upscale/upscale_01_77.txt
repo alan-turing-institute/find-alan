@@ -1,0 +1,4 @@
+"Faithfully upscale input. Keep composition, layout, characters, poses, colours, view, "
+"placement, crowd density. Sharpen existing outlines, faces, clothing, edges, and background. "
+"Do not add, duplicate, or remove people, objects, signs, logos, or text. Wimmelbilder cartoon, "
+"flat 2D, bright colours, crisp linework."
