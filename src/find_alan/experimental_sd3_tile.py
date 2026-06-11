@@ -109,6 +109,17 @@ def run_sd3_tile_upscale(config: "DiffusionUpscaleConfig") -> Path:
     torch = ml["torch"]
     Image = ml["Image"]
 
+    control_guidance_start = float(config.sd3_control_guidance_start)
+    control_guidance_end = float(config.sd3_control_guidance_end)
+    if not 0 <= control_guidance_start <= 1:
+        raise ValueError("--sd3-control-guidance-start must be between 0 and 1")
+    if not 0 <= control_guidance_end <= 1:
+        raise ValueError("--sd3-control-guidance-end must be between 0 and 1")
+    if control_guidance_start > control_guidance_end:
+        raise ValueError(
+            "--sd3-control-guidance-start must be <= --sd3-control-guidance-end"
+        )
+
     device = config.device or ("cuda" if torch.cuda.is_available() else "cpu")
     dtype = torch.float16 if device.startswith("cuda") else torch.float32
 
@@ -194,6 +205,9 @@ def run_sd3_tile_upscale(config: "DiffusionUpscaleConfig") -> Path:
             result = pipe(
                 prompt=prompt,
                 negative_prompt=config.negative_prompt,
+                guidance_scale=float(config.guidance_scale),
+                control_guidance_start=control_guidance_start,
+                control_guidance_end=control_guidance_end,
                 control_image=reference_tile,
                 controlnet_conditioning_scale=float(config.controlnet_strength),
                 height=crop.height,

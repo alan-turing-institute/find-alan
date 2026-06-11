@@ -56,12 +56,16 @@ class DiffusionUpscaleConfig:
     flux2_tile_size: int = 1024
     flux2_overlap: int = 256
     flux2_jitter: int | None = None
+    flux2_md_fusion: str = "weighted"
+    flux2_md_anneal_fraction: float = 0.35
     flux2_pipeline: str = "auto"
     flux2_max_sequence_length: int = 512
     flux2_caption_upsample_temperature: float | None = None
     sd3_tile_size: int = 1024
     sd3_overlap: int = 256
     sd3_jitter: int | None = None
+    sd3_control_guidance_start: float = 0.0
+    sd3_control_guidance_end: float = 1.0
     sd3_max_sequence_length: int = 256
 
 

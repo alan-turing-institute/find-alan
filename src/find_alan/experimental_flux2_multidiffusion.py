@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -28,6 +28,7 @@ class _ViewContext:
     image_latents: Any
     image_latent_ids: Any
     weight: Any
+    center_weight: Any | None = None
 
 
 def _progress_bar(total: int, desc: str) -> Any | None:
@@ -57,6 +58,37 @@ def _crop_indices(crop: Crop, latent_width: int, torch: Any, device: Any) -> Any
     rows = torch.arange(crop.y, crop.bottom, device=device, dtype=torch.long)
     cols = torch.arange(crop.x, crop.right, device=device, dtype=torch.long)
     return (rows[:, None] * latent_width + cols[None, :]).reshape(-1)
+
+
+def _assign_center_owner_weights(
+    contexts: list[_ViewContext],
+    total_tokens: int,
+    torch: Any,
+    device: Any,
+    dtype: Any,
+) -> list[_ViewContext]:
+    if not contexts:
+        return contexts
+
+    owner_score = torch.full((total_tokens,), -1.0, device=device, dtype=torch.float32)
+    owner_view = torch.full((total_tokens,), -1, device=device, dtype=torch.long)
+    for view_index, view in enumerate(contexts):
+        score = view.weight.reshape(-1).to(torch.float32)
+        update = score > owner_score.index_select(0, view.indices)
+        if bool(update.any().item()):
+            indices = view.indices[update]
+            owner_score.index_copy_(0, indices, score[update])
+            owner_view.index_copy_(
+                0,
+                indices,
+                torch.full((indices.numel(),), view_index, device=device, dtype=torch.long),
+            )
+
+    owned_contexts = []
+    for view_index, view in enumerate(contexts):
+        center_weight = (owner_view.index_select(0, view.indices) == view_index).to(dtype).view(1, -1, 1)
+        owned_contexts.append(replace(view, center_weight=center_weight))
+    return owned_contexts
 
 
 def _preprocess_reference_image(pipe: Any, image: Any) -> Any:
@@ -183,7 +215,36 @@ def _build_views(
             )
         )
 
-    return contexts
+    return _assign_center_owner_weights(
+        contexts,
+        latent_width * latent_height,
+        torch,
+        device,
+        latents.dtype,
+    )
+
+
+def _step_uses_center_fusion(config: "DiffusionUpscaleConfig", step_index: int, num_steps: int) -> bool:
+    fusion = config.flux2_md_fusion
+    if fusion == "weighted":
+        return False
+    if fusion == "center":
+        return True
+    if fusion == "annealed":
+        final_fraction = max(0.0, min(1.0, float(config.flux2_md_anneal_fraction)))
+        if final_fraction <= 0:
+            return False
+        switch_index = max(0, min(num_steps, round(num_steps * (1.0 - final_fraction))))
+        return step_index >= switch_index
+    raise ValueError(f"Unknown Flux.2 MultiDiffusion fusion mode: {fusion}")
+
+
+def _uses_embedded_guidance(pipe: Any) -> bool:
+    return "klein" not in pipe.__class__.__name__.lower()
+
+
+def _classifier_free_guidance_enabled(pipe: Any) -> bool:
+    return bool(getattr(pipe, "do_classifier_free_guidance", False))
 
 
 def _decode_latents(pipe: Any, latents: Any, latent_ids: Any, height: int, width: int, output_path: Path) -> Path:
@@ -209,6 +270,10 @@ def _decode_latents(pipe: Any, latents: Any, latent_ids: Any, height: int, width
 def run_flux2_multidiffusion_upscale(config: "DiffusionUpscaleConfig") -> Path:
     if config.multidiffusion_view_batch_size != 1:
         raise ValueError("Experimental flux2-multidiffusion currently supports --md-view-batch-size 1 only")
+    if config.flux2_md_fusion not in {"weighted", "center", "annealed"}:
+        raise ValueError(f"Unknown Flux.2 MultiDiffusion fusion mode: {config.flux2_md_fusion}")
+    if not 0 <= float(config.flux2_md_anneal_fraction) <= 1:
+        raise ValueError("--flux2-md-anneal-fraction must be between 0 and 1")
 
     ml = _import_flux2()
     np = ml["np"]
@@ -277,9 +342,12 @@ def run_flux2_multidiffusion_upscale(config: "DiffusionUpscaleConfig") -> Path:
     prompt_embeds = prompt_embeds.detach()
     text_ids = text_ids.detach()
 
+    do_classifier_free_guidance = _classifier_free_guidance_enabled(pipe)
+    uses_embedded_guidance = _uses_embedded_guidance(pipe)
+
     negative_prompt_embeds = None
     negative_text_ids = None
-    if pipe.do_classifier_free_guidance:
+    if do_classifier_free_guidance:
         with torch.no_grad():
             negative_prompt_embeds, negative_text_ids = pipe.encode_prompt(
                 prompt=config.negative_prompt or "",
@@ -326,12 +394,28 @@ def run_flux2_multidiffusion_upscale(config: "DiffusionUpscaleConfig") -> Path:
     )
     pipe.scheduler.set_begin_index(0)
 
+    transformer_guidance = None
+    if uses_embedded_guidance:
+        transformer_guidance = torch.full(
+            [1],
+            float(config.guidance_scale),
+            device=device,
+            dtype=torch.float32,
+        ).expand(latents.shape[0])
+
     progress = _progress_bar(num_inference_steps * len(views), "Flux.2 MD crops")
     try:
         with torch.no_grad():
             for step_index, timestep_value in enumerate(timesteps):
+                use_center_fusion = _step_uses_center_fusion(config, step_index, num_inference_steps)
                 if progress is not None:
-                    progress.set_postfix(step=f"{step_index + 1}/{num_inference_steps}", views=len(views), refresh=False)
+                    fusion_name = "center" if use_center_fusion else "weighted"
+                    progress.set_postfix(
+                        step=f"{step_index + 1}/{num_inference_steps}",
+                        views=len(views),
+                        fusion=fusion_name,
+                        refresh=False,
+                    )
 
                 pipe._current_timestep = timestep_value
                 timestep = timestep_value.expand(latents.shape[0]).to(latents.dtype)
@@ -346,7 +430,7 @@ def run_flux2_multidiffusion_upscale(config: "DiffusionUpscaleConfig") -> Path:
                     noise_pred = pipe.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep / 1000,
-                        guidance=None,
+                        guidance=transformer_guidance,
                         encoder_hidden_states=prompt_embeds,
                         txt_ids=text_ids,
                         img_ids=latent_image_ids,
@@ -355,11 +439,11 @@ def run_flux2_multidiffusion_upscale(config: "DiffusionUpscaleConfig") -> Path:
                     )[0]
                     noise_pred = noise_pred[:, : latent_crop.size(1), :]
 
-                    if pipe.do_classifier_free_guidance:
+                    if do_classifier_free_guidance:
                         neg_noise_pred = pipe.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep / 1000,
-                            guidance=None,
+                            guidance=transformer_guidance,
                             encoder_hidden_states=negative_prompt_embeds,
                             txt_ids=negative_text_ids,
                             img_ids=latent_image_ids,
@@ -369,7 +453,10 @@ def run_flux2_multidiffusion_upscale(config: "DiffusionUpscaleConfig") -> Path:
                         neg_noise_pred = neg_noise_pred[:, : latent_crop.size(1), :]
                         noise_pred = neg_noise_pred + float(config.guidance_scale) * (noise_pred - neg_noise_pred)
 
-                    weight = view.weight.to(dtype=noise_pred.dtype)
+                    weight_source = view.center_weight if use_center_fusion else view.weight
+                    if weight_source is None:
+                        weight_source = view.weight
+                    weight = weight_source.to(dtype=noise_pred.dtype)
                     noise_value.index_add_(1, view.indices, noise_pred.to(latents.dtype) * weight.to(latents.dtype))
                     count.index_add_(1, view.indices, weight.to(latents.dtype))
 
