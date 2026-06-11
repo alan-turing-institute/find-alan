@@ -64,6 +64,8 @@ class DiffusionUpscaleConfig:
     sd3_tile_size: int = 1024
     sd3_overlap: int = 256
     sd3_jitter: int | None = None
+    sd3_control_guidance_start: float = 0.0
+    sd3_control_guidance_end: float = 1.0
     sd3_max_sequence_length: int = 256
 
 

@@ -87,6 +87,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sd3-tile-size", type=int, default=1024)
     parser.add_argument("--sd3-overlap", type=int, default=256)
     parser.add_argument("--sd3-jitter", type=int, default=None)
+    parser.add_argument("--sd3-control-guidance-start", type=float, default=0.0)
+    parser.add_argument("--sd3-control-guidance-end", type=float, default=1.0)
     parser.add_argument("--sd3-max-sequence-length", type=int, default=256)
     parser.add_argument("--no-cpu-offload", action="store_true")
     return parser
@@ -159,6 +161,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         sd3_tile_size=args.sd3_tile_size,
         sd3_overlap=args.sd3_overlap,
         sd3_jitter=args.sd3_jitter,
+        sd3_control_guidance_start=args.sd3_control_guidance_start,
+        sd3_control_guidance_end=args.sd3_control_guidance_end,
         sd3_max_sequence_length=args.sd3_max_sequence_length,
     )
 

@@ -4,6 +4,9 @@
 
 Experiments for diffusion upscaling low-resolution images with tiled pipelines, a custom MultiDiffusion path, and Flux.2 reference-conditioned tiles.
 
+See [upscalers.md](upscalers.md) for the current upscaler architecture guide,
+engine tradeoffs, and result-informed next experiments.
+
 ## Setup
 
 ```sh
@@ -69,7 +72,6 @@ Run static checks when dev dependencies are installed:
 
 ```sh
 uv run ty check
-```
 uv run find-alan-upscale --help
 uv run find-alan-crop-plan --help
 ```
@@ -98,9 +100,13 @@ flowchart TD
     Engine --> ModTile["mod-tile"]
     Engine --> Multi["multidiffusion"]
     Engine --> Flux["flux2-tile"]
+    Engine --> FluxMD["flux2-multidiffusion"]
+    Engine --> SD3["sd3-tile"]
     ModTile --> Blend["Tile, condition, and blend"]
     Multi --> Blend
     Flux --> Blend
+    FluxMD --> Blend
+    SD3 --> Blend
     Blend --> BaseOut["Upscaled crowd base"]
     BaseOut --> Review["Review seams, detail, and layout"]
     Review --> Local["Optional local object insertion or repair"]
