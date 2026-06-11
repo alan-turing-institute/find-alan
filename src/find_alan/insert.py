@@ -89,11 +89,26 @@ def run_insertion(
     w, h = scene.size
     full_mask = Image.new("L", (w, h), 255)
 
+    # Scale the reference figure so its longest side matches the shortest
+    # side of the scene.  Without this, a large figure passed to a small
+    # crop is presented to the reference encoder at the wrong scale and
+    # only a portion appears in the output.
+    ref = figure.convert("RGB")
+    target = min(w, h)
+    longest = max(ref.width, ref.height)
+    if longest != target:
+        scale = target / longest
+        ref = ref.resize(
+            (max(1, round(ref.width * scale)),
+             max(1, round(ref.height * scale))),
+            Image.LANCZOS,
+        )
+
     result = pipe(
         prompt=prompt,
         image=scene.convert("RGB"),
         mask_image=full_mask,
-        image_reference=_pad_to_square(figure.convert("RGB")),
+        image_reference=_pad_to_square(ref),
         height=h,
         width=w,
         strength=strength,
