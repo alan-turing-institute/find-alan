@@ -22,11 +22,21 @@ _PERSON_CLASS = 0  # COCO class index for "person"
 Strategy = Literal["random", "largest", "smallest", "center"]
 
 
-def load_detector(model_size: str = "yolov8n"):
-    """Return a YOLOv8 detector. Downloads the weights on first call."""
+def load_detector(
+    model_size: str = "yolov8n",
+    classes: list[str] | None = None,
+):
+    """Return a YOLOv8 / YOLO-World detector. Downloads weights on first call.
+
+    Pass *classes* for open-vocabulary YOLO-World models, e.g. ``["cartoon person"]``.
+    Leave as None for standard YOLOv8 to use the built-in COCO person class.
+    """
     from ultralytics import YOLO  # import here so ultralytics is optional at import time
 
-    return YOLO(f"{model_size}.pt")
+    model = YOLO(f"{model_size}.pt")
+    if classes is not None:
+        model.set_classes(classes)
+    return model
 
 
 def detect_people(

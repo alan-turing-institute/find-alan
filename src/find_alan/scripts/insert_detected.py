@@ -111,12 +111,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--yolo-model",
-        default="yolov8n",
+        default="yolov8s-worldv2",
         metavar="NAME",
         help=(
-            "YOLOv8 model variant (yolov8n/s/m/l/x). Use the matching"
-            " '-seg' variant (e.g. yolov8n-seg) to enable person-shaped"
-            " segmentation masks for compositing. Default: yolov8n."
+            "YOLOv8 / YOLO-World model variant. Use a '-worldv2' variant"
+            " (e.g. yolov8s-worldv2) for open-vocabulary detection with"
+            " --detection-classes; use a '-seg' variant (e.g. yolov8n-seg)"
+            " to enable segmentation masks. Default: yolov8s-worldv2."
+        ),
+    )
+    p.add_argument(
+        "--detection-classes",
+        nargs="+",
+        default=["cartoon person"],
+        metavar="CLASS",
+        help=(
+            "One or more text class prompts for open-vocabulary detection"
+            " (YOLO-World). Ignored for standard YOLOv8 models."
+            " Default: 'cartoon person'."
         ),
     )
     p.add_argument(
@@ -193,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"Detecting people in scene" f" (YOLO {args.yolo_model}, conf≥{args.conf})..."
     )
-    detector = load_detector(args.yolo_model)
+    detector = load_detector(args.yolo_model, classes=args.detection_classes)
 
     seg_mask: Image.Image | None = None
     if args.segmentation:
