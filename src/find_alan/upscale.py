@@ -20,7 +20,7 @@ DEFAULT_FLUX2_MODEL_ID = "black-forest-labs/FLUX.2-dev"
 DEFAULT_SD3_MODEL_ID = "stabilityai/stable-diffusion-3.5-large"
 DEFAULT_MOD_CONTROLNET_ID = "OzzyGT/controlnet-union-promax-sdxl-1.0"
 DEFAULT_MULTIDIFFUSION_CONTROLNET_ID = "xinsir/controlnet-tile-sdxl-1.0"
-DEFAULT_SD3_CONTROLNET_ID = "InstantX/SD3-Controlnet-Tile"
+DEFAULT_SD3_CONTROLNET_ID = "stabilityai/stable-diffusion-3.5-large-controlnet-blur"
 
 
 class MissingMLDependencies(RuntimeError):

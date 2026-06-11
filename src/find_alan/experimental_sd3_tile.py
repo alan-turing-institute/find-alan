@@ -103,6 +103,35 @@ def _save_blended_canvas(
     return output_path
 
 
+def _config_width(model: Any) -> int | None:
+    config = getattr(model, "config", None)
+    heads = getattr(config, "num_attention_heads", None)
+    dim = getattr(config, "attention_head_dim", None)
+    if heads is None or dim is None:
+        return None
+    return int(heads) * int(dim)
+
+
+def _validate_controlnet_compatible(
+    pipe: Any, model_id: str, controlnet_id: str
+) -> None:
+    transformer_width = _config_width(getattr(pipe, "transformer", None))
+    controlnet_width = _config_width(getattr(pipe, "controlnet", None))
+    if (
+        transformer_width is None
+        or controlnet_width is None
+        or transformer_width == controlnet_width
+    ):
+        return
+
+    raise ValueError(
+        "SD3 model/controlnet mismatch: "
+        f"{model_id} uses transformer width {transformer_width}, but "
+        f"{controlnet_id} uses ControlNet width {controlnet_width}. "
+        "Use a ControlNet trained for the same SD3 backbone."
+    )
+
+
 def run_sd3_tile_upscale(config: "DiffusionUpscaleConfig") -> Path:
     ml = _import_sd3()
     np = ml["np"]
@@ -169,6 +198,8 @@ def run_sd3_tile_upscale(config: "DiffusionUpscaleConfig") -> Path:
             use_safetensors=True,
             variant="fp16" if dtype is torch.float16 else None,
         )
+
+    _validate_controlnet_compatible(pipe, config.model_id, config.controlnet_id)
 
     if (
         config.cpu_offload

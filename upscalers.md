@@ -52,7 +52,7 @@ and whether the model has a strong spatial control signal.
 | SDXL latent MultiDiffusion | `multidiffusion` | `experimental_multidiffusion.py` | ControlNet Tile per latent view | Best base candidate | Too much denoise collapses into texture |
 | Flux2 pixel tiles | `flux2-tile` | `experimental_flux2_tile.py` | Per-crop image reference | Simple Flux2 comparison | Independent tiles drift or simplify |
 | Flux2 latent MultiDiffusion | `flux2-multidiffusion` | `experimental_flux2_multidiffusion.py` | Per-crop image reference tokens | Tests Flux2 global latent fusion | Weak control versus ControlNet |
-| SD3.5 tiled ControlNet | `sd3-tile` | `experimental_sd3_tile.py` | SD3 ControlNet Tile per crop | Clean-layout experiment | Grain and stylized texture |
+| SD3.5 tiled ControlNet | `sd3-tile` | `experimental_sd3_tile.py` | SD3.5 ControlNet Blur per crop | Clean-layout experiment | Grain and stylized texture |
 | Tiled refinement | `find-alan-refine` | `refinement.py` | Flux inpaint mask | Local detail repair after base selection | Can amplify grain or invent details |
 
 ## `mod-tile`
@@ -179,21 +179,23 @@ encoding. Do not use it as the default base path for the conference image.
 ## `sd3-tile`
 
 `sd3-tile` uses `StableDiffusion3ControlNetPipeline` with SD3.5 Large and the
-InstantX SD3 Tile ControlNet. It is a pixel-tiled ControlNet redraw, then a
-Gaussian pixel blend.
+matching SD3.5 Large ControlNet Blur by default. It is a pixel-tiled
+ControlNet redraw, then a Gaussian pixel blend.
 
 ```mermaid
 flowchart TD
     Source["Source image"] --> Resize["Resize to target size"]
     Resize --> Crops["Overlapping pixel crops"]
-    Crops --> Control["SD3 Tile ControlNet"]
+    Crops --> Control["SD3.5 Blur ControlNet"]
     Control --> SD3["SD3.5 generation"]
     SD3 --> Blend["Gaussian pixel blend"]
     Blend --> Output["Upscaled image"]
 ```
 
-Why it can work: unlike Flux2 tile, SD3 has a ControlNet tile model, so it can
-preserve the source layout while using a stronger modern DiT model.
+Why it can work: unlike Flux2 tile, SD3.5 has a ControlNet path that can
+preserve the source layout while using a stronger modern DiT model. The
+InstantX SD3 tile ControlNet is still available for experiments, but it must be
+paired with a 1536-wide SD3 backbone rather than SD3.5 Large.
 
 Why the first result was grainy: the default SD3 guidance was effectively too
 strong for clean line art, and the prompt encouraged high-frequency detail. The
