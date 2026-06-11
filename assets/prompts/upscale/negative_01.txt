@@ -1,0 +1,8 @@
+"extra people, new characters, duplicated characters, repeated faces, cloned faces, "
+"hallucinated figures, added crowds, increased crowd density, invented objects, new props, "
+"new signs, readable text, captions, letters, numbers, logos, watermark, brand marks, "
+"photorealistic, 3d render, painterly, oil painting, sketchy, blurry, low resolution, "
+"smeared linework, muddy details, noisy texture, oversharpened halos, tile seams, visible grid, "
+"mismatched tile boundaries, warped perspective, distorted anatomy, missing limbs, extra limbs, "
+"extra fingers, fused fingers, deformed hands, malformed faces, crossed eyes, melted faces, "
+"overexposed, underexposed, color shift"
