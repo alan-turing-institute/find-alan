@@ -29,8 +29,7 @@ from find_alan.insert import load_pipeline, run_insertion
 from find_alan.mask import bbox_to_mask
 
 _DETECTION_PROMPT = (
-    "Replace the person in this image with the person"
-    " from the reference image."
+    "Replace the person in this image with the person" " from the reference image."
 )
 
 
@@ -51,15 +50,21 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     p.add_argument(
-        "--scene", required=True, metavar="PATH",
+        "--scene",
+        required=True,
+        metavar="PATH",
         help="Crowd/background scene image.",
     )
     p.add_argument(
-        "--figure", required=True, metavar="PATH",
+        "--figure",
+        required=True,
+        metavar="PATH",
         help="Reference figure to insert.",
     )
     p.add_argument(
-        "--output", required=True, metavar="PATH",
+        "--output",
+        required=True,
+        metavar="PATH",
         help="Where to save the result.",
     )
 
@@ -136,7 +141,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="How much the crop can change (0–1). Default: 0.99.",
     )
     p.add_argument(
-        "--steps", type=int, default=50, metavar="INT",
+        "--steps",
+        type=int,
+        default=50,
+        metavar="INT",
         help="Inference steps. Default: 50.",
     )
     p.add_argument(
@@ -147,11 +155,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="CFG scale. Default: 10.0.",
     )
     p.add_argument(
-        "--seed", type=int, default=None, metavar="INT",
+        "--seed",
+        type=int,
+        default=None,
+        metavar="INT",
         help="Reproducibility seed.",
     )
     p.add_argument(
-        "--device", default=None, metavar="DEVICE",
+        "--device",
+        default=None,
+        metavar="DEVICE",
         help="cuda | mps | cpu  (auto-detected if omitted).",
     )
     p.add_argument(
@@ -159,6 +172,14 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         default=None,
         help="Optionally save the bbox mask image for inspection.",
+    )
+    p.add_argument(
+        "--test",
+        action="store_true",
+        help=(
+            "Draw a red outline around the inpainted crop region in the"
+            " final image for quick visual verification."
+        ),
     )
     return p
 
@@ -170,20 +191,16 @@ def main(argv: list[str] | None = None) -> int:
     figure = Image.open(args.figure).convert("RGB")
 
     print(
-        f"Detecting people in scene"
-        f" (YOLO {args.yolo_model}, conf≥{args.conf})..."
+        f"Detecting people in scene" f" (YOLO {args.yolo_model}, conf≥{args.conf})..."
     )
     detector = load_detector(args.yolo_model)
 
     seg_mask: Image.Image | None = None
     if args.segmentation:
-        detections = detect_people_with_masks(
-            detector, scene, conf_threshold=args.conf
-        )
+        detections = detect_people_with_masks(detector, scene, conf_threshold=args.conf)
         if not detections:
             print(
-                "No people detected. Try lowering --conf or check the"
-                " scene image."
+                "No people detected. Try lowering --conf or check the" " scene image."
             )
             return 1
         bboxes = [bbox for bbox, _ in detections]
@@ -193,8 +210,7 @@ def main(argv: list[str] | None = None) -> int:
         seg_masks = {}
         if not bboxes:
             print(
-                "No people detected. Try lowering --conf or check the"
-                " scene image."
+                "No people detected. Try lowering --conf or check the" " scene image."
             )
             return 1
 
@@ -222,8 +238,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.save_mask:
         from pathlib import Path
-        save = seg_mask if seg_mask is not None else bbox_to_mask(
-            scene.size, padded_bbox
+
+        save = (
+            seg_mask if seg_mask is not None else bbox_to_mask(scene.size, padded_bbox)
         )
         Path(args.save_mask).parent.mkdir(parents=True, exist_ok=True)
         save.save(args.save_mask)
@@ -238,9 +255,7 @@ def main(argv: list[str] | None = None) -> int:
     scene_crop = scene.crop(crop_box)
     print(f"Cropped scene to detection region: {scene_crop.size}")
 
-    print(
-        "Loading pipeline (FLUX.2-Klein, ~13 GB, downloaded on first run)..."
-    )
+    print("Loading pipeline (FLUX.2-Klein, ~13 GB, downloaded on first run)...")
     pipe = load_pipeline(device=args.device)
 
     print("Running FLUX.2-Klein on detection crop...")
@@ -271,14 +286,26 @@ def main(argv: list[str] | None = None) -> int:
         paste_mask = Image.new("L", (pw, ph), 0)
         inner = [feather, feather, pw - feather, ph - feather]
         ImageDraw.Draw(paste_mask).rectangle(inner, fill=255)
-        paste_mask = paste_mask.filter(
-            ImageFilter.GaussianBlur(radius=feather)
-        )
+        paste_mask = paste_mask.filter(ImageFilter.GaussianBlur(radius=feather))
 
     result = scene.copy()
     result.paste(result_sized, (px, py), mask=paste_mask)
 
+    if args.test:
+        # Visual debug aid: show where the inpainted crop was pasted.
+        line_width = max(2, min(scene.size) // 300)
+        ImageDraw.Draw(result).rectangle(
+            (px, py, px + pw - 1, py + ph - 1),
+            outline=(255, 0, 0),
+            width=line_width,
+        )
+        print(
+            "[test] Drew red outline around inpainted region "
+            f"(x={px}, y={py}, w={pw}, h={ph})"
+        )
+
     from pathlib import Path
+
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     result.save(output_path)
