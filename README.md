@@ -488,7 +488,7 @@ The command detects people in a scene image using YOLO, then uses FLUX (FLUX.2-K
 For example, to generate the Alan in Venice example:
 
 ```bash
-uv run find-alan-insert-detected --scene examples/final_result.png --figure examples/alan_cartoon.png --yolo-model yolov8s-worldv2  --detection-classes person --seed 111 --output examples/venice_alan_111.png --test
+uv run find-alan-insert-detected --scene examples/final_result.png --figure examples/alan_cartoon.png --yolo-model yolov8s-worldv2  --detection-classes person --seed 111
 ```
 
 What this specific command does:
@@ -497,9 +497,7 @@ What this specific command does:
 --scene  examples/final_result.png    # the background/scene to modify
 --figure examples/alan_cartoon.png    # the person/figure to insert
 --yolo-model yolov8s-worldv2          # YOLO model for detection
---detection-classes person            # detect people
---output examples/conference_alan.png # where to save the result
-```
+--detection-classes person            # detect people```
 
 Pipeline steps:
 
@@ -509,7 +507,7 @@ Pipeline steps:
 4. Crop — extracts that padded region from the scene
 5. Inpaint — loads FLUX.2-Klein (~13 GB) and runs inpainting on the crop, using the reference image to condition what gets inserted
 6. Composite — resizes the inpainted crop back and blends it into the original scene with a feathered mask at the edges for smooth transitions
-7. Save — writes the final image to conference_alan.png
+7. Save — writes the final image to `examples/<figure>_<scene>_<seed>.png`
 
 
 Net effect: one person in final_result.png is swapped out for Alan (the cartoon figure), seamlessly composited back into the original scene.
