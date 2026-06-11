@@ -35,6 +35,11 @@ def load_detector(
 
     model = YOLO(f"{model_size}.pt")
     if classes is not None:
+        if not hasattr(model, "set_classes"):
+            raise ValueError(
+                f"Model '{model_size}' does not support open-vocabulary classes. "
+                "Use a YOLO-World variant (e.g. yolov8s-worldv2) for --detection-classes."
+            )
         model.set_classes(classes)
     return model
 
