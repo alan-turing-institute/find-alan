@@ -20,16 +20,21 @@ from pathlib import Path
 import sys
 
 from find_alan.paste import (
-    DEFAULT_FIGURE_PATH,
-    DEFAULT_FLUX_MODEL_ID,
-    DEFAULT_INPUT_PATH,
-    DEFAULT_OUTPUT_DIR,
-    DEFAULT_PASTE_NEGATIVE_PROMPT,
-    DEFAULT_PASTE_PROMPT,
     MissingMLDependencies,
     PasteAlanConfig,
     run_paste_alan,
 )
+
+# Single source of truth for every default: the dataclass. The CLI reads its
+# defaults from here, so editing PasteAlanConfig changes the CLI too — no more
+# argparse defaults silently shadowing the dataclass.
+_DEFAULTS = PasteAlanConfig()
+
+
+class _Formatter(
+    argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter
+):
+    """Show each argument's default and keep the raw description layout."""
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,44 +44,46 @@ def build_parser() -> argparse.ArgumentParser:
             "Paste the Alan figure over a detected person and refine the seam "
             "with a gentle masked Flux inpaint."
         ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=_Formatter,
     )
-    p.add_argument("--input", type=Path, default=DEFAULT_INPUT_PATH, help="Scene to paste into.")
-    p.add_argument("--figure", type=Path, default=DEFAULT_FIGURE_PATH, help="RGBA figure to paste.")
-    p.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR, help="Where to write results.")
-    p.add_argument("--output-name", default="conference_alan", help="Basename for the PNG and JSON.")
+    p.add_argument("--input", type=Path, default=_DEFAULTS.input_path, help="Scene to paste into.")
+    p.add_argument("--figure", type=Path, default=_DEFAULTS.figure_path, help="RGBA figure to paste.")
+    p.add_argument("--output-dir", type=Path, default=_DEFAULTS.output_dir, help="Where to write results.")
+    p.add_argument("--output-name", default=_DEFAULTS.output_name, help="Basename for the PNG and JSON.")
 
     p.add_argument(
         "--strategy",
-        default="random",
+        default=_DEFAULTS.strategy,
         choices=["random", "largest", "smallest", "center"],
-        help="Which detected person to replace. Default: random.",
+        help="Which detected person to replace.",
     )
-    p.add_argument("--conf", type=float, default=0.2, help="YOLO confidence threshold. Default: 0.2.")
-    p.add_argument("--yolo-model", default="yolov8x", help="YOLOv8 variant (x needed for tiny crowd figures). Default: yolov8x.")
-    p.add_argument("--seed", type=int, default=42, help="Seed for target pick and generator. Default: 42.")
-    p.add_argument("--edge-margin", type=float, default=0.05, help="Edge fraction where the figure may not land. Default: 0.05.")
-    p.add_argument("--logo-zone", type=float, default=0.10, help="Top-left fraction reserved for a logo. Default: 0.10.")
+    p.add_argument("--conf", type=float, default=_DEFAULTS.conf_threshold, help="YOLO confidence threshold.")
+    p.add_argument("--yolo-model", default=_DEFAULTS.yolo_model, help="YOLOv8 variant (x needed for tiny crowd figures).")
+    p.add_argument("--seed", type=int, default=_DEFAULTS.seed, help="Seed for target pick and generator. Omit for a random figure each run.")
+    p.add_argument("--edge-margin", type=float, default=_DEFAULTS.edge_margin, help="Edge fraction where the figure may not land.")
+    p.add_argument("--logo-zone", type=float, default=_DEFAULTS.logo_zone, help="Top-left fraction reserved for a logo.")
 
-    p.add_argument("--figure-scale", type=float, default=1.10, help="Scale Alan relative to the bbox height (boxes clip). Default: 1.10.")
-    p.add_argument("--gap-padding", type=float, default=0.4, help="Writable gap ring, fraction of figure. Default: 0.4.")
-    p.add_argument("--border-padding", type=float, default=0.2, help="Frozen border ring, fraction. Default: 0.2.")
-    p.add_argument("--crop-size", type=int, default=512, help="Inference resolution (mult. of 16). Default: 512.")
+    p.add_argument("--figure-scale", type=float, default=_DEFAULTS.figure_scale, help="Scale Alan relative to the bbox height (boxes clip).")
+    p.add_argument("--gap-padding", type=float, default=_DEFAULTS.gap_padding, help="Writable gap ring, fraction of figure.")
+    p.add_argument("--border-padding", type=float, default=_DEFAULTS.border_padding, help="Frozen border ring, fraction.")
+    p.add_argument("--crop-size", type=int, default=_DEFAULTS.crop_size, help="Inference resolution (mult. of 16).")
 
-    p.add_argument("--protect-fraction", type=float, default=0.6, help="Top fraction of the figure kept frozen. Default: 0.6.")
-    p.add_argument("--alpha-threshold", type=int, default=128, help="Alpha cutoff for the silhouette. Default: 128.")
-    p.add_argument("--dilate", type=int, default=8, help="Grow protected silhouette before feathering. Default: 8.")
-    p.add_argument("--feather", type=int, default=8, help="Gaussian feather on the mask. Default: 8.")
+    p.add_argument("--protect-fraction", type=float, default=_DEFAULTS.protect_fraction, help="Fraction of the figure (from top) kept frozen; 1.0 = whole silhouette incl. legs.")
+    p.add_argument("--alpha-threshold", type=int, default=_DEFAULTS.alpha_threshold, help="Alpha cutoff for the silhouette.")
+    p.add_argument("--dilate", type=int, default=_DEFAULTS.dilate, help="Grow protected silhouette before feathering.")
+    p.add_argument("--feather", type=int, default=_DEFAULTS.feather, help="Gaussian feather on the mask.")
 
-    p.add_argument("--model-id", default=DEFAULT_FLUX_MODEL_ID, help="Flux inpaint model id.")
-    p.add_argument("--prompt", default=None, help="Override the paste prompt.")
-    p.add_argument("--negative-prompt", default=None, help="Override the negative prompt.")
-    p.add_argument("--strength", type=float, default=0.7, help="Inpaint strength = noise fraction in the writable region. Default: 0.7.")
-    p.add_argument("--steps", type=int, default=28, help="Inference steps. Default: 28.")
-    p.add_argument("--guidance-scale", type=float, default=3.5, help="CFG scale. Default: 3.5.")
-    p.add_argument("--device", default="cuda:0", help="Torch device. Default: cuda:0.")
-    p.add_argument("--torch-dtype", default="bfloat16", help="Torch dtype. Default: bfloat16.")
-    p.add_argument("--save-debug", action="store_true", help="Also save crop/mask debug images.")
+    p.add_argument("--model-id", default=_DEFAULTS.model_id, help="Flux inpaint model id.")
+    p.add_argument("--prompt", default=_DEFAULTS.prompt, help="Override the paste prompt.")
+    p.add_argument("--negative-prompt", default=_DEFAULTS.negative_prompt, help="Override the negative prompt.")
+    p.add_argument("--strength", type=float, default=_DEFAULTS.strength, help="Inpaint strength = noise fraction in the writable region.")
+    p.add_argument("--steps", type=int, default=_DEFAULTS.steps, help="Inference steps.")
+    p.add_argument("--refine-passes", type=int, default=_DEFAULTS.refine_passes, help="Repeat the noise/denoise refinement this many times.")
+    p.add_argument("--guidance-scale", type=float, default=_DEFAULTS.guidance_scale, help="CFG scale; lower follows surroundings more.")
+    p.add_argument("--gap-blur", type=float, default=_DEFAULTS.gap_blur, help="Pre-blur the writable gap before refining (0 = off). Try ~8 with higher strength.")
+    p.add_argument("--device", default=_DEFAULTS.device, help="Torch device.")
+    p.add_argument("--torch-dtype", default=_DEFAULTS.torch_dtype, help="Torch dtype.")
+    p.add_argument("--save-debug", action="store_true", default=_DEFAULTS.save_debug, help="Also save crop/mask debug images.")
     return p
 
 
@@ -102,11 +109,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         dilate=args.dilate,
         feather=args.feather,
         model_id=args.model_id,
-        prompt=args.prompt or DEFAULT_PASTE_PROMPT,
-        negative_prompt=args.negative_prompt or DEFAULT_PASTE_NEGATIVE_PROMPT,
+        prompt=args.prompt,
+        negative_prompt=args.negative_prompt,
         strength=args.strength,
         steps=args.steps,
         guidance_scale=args.guidance_scale,
+        refine_passes=args.refine_passes,
+        gap_blur=args.gap_blur,
         device=args.device,
         torch_dtype=args.torch_dtype,
         save_debug=args.save_debug,

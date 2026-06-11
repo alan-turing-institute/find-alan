@@ -154,6 +154,26 @@ def test_mask_leaves_lower_figure_writable():
     assert mask.getpixel((low_cx, low_cy)) > 200
 
 
+def test_mask_protect_fraction_one_freezes_legs():
+    figure = _alan(100, 200)
+    bbox = (1000, 500, 80, 400)
+    paste = compute_paste_box(bbox, figure.size)
+    crop, gap = compute_crop_box(bbox, paste, (2048, 2048), 0.4, 0.2)
+
+    mask = build_writable_mask(
+        crop, gap, paste, figure,
+        protect_fraction=1.0, alpha_threshold=128, dilate=8, feather=8,
+    )
+    # The same low-down point on the figure is now frozen (legs protected).
+    low_cx = (paste[0] + paste[2]) // 2 - crop[0]
+    low_cy = paste[1] + int((paste[3] - paste[1]) * 0.9) - crop[1]
+    assert mask.getpixel((low_cx, low_cy)) < 40
+    # The gap ring beside the figure stays writable.
+    gap_x = (gap[0] + paste[0]) // 2 - crop[0]
+    gap_y = (gap[1] + gap[3]) // 2 - crop[1]
+    assert mask.getpixel((gap_x, gap_y)) > 200
+
+
 # --------------------------------------------------------------------------- #
 # selection_zones / filter_selectable
 # --------------------------------------------------------------------------- #

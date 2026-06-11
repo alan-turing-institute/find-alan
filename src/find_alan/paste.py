@@ -6,9 +6,9 @@ Pipeline:
        border ring;
     3. paste the figure over the person, scaled to the person's bbox height and
        alpha-composited;
-    4. build a mask whose writable area is the gap ring plus the figure below
-       the upper thigh, while the figure's alpha silhouette above the thigh and
-       the outer border ring stay frozen;
+    4. build a mask whose writable area is the gap ring around the figure, while
+       the figure's full alpha silhouette and the outer border ring stay frozen
+       (protect_fraction < 1.0 leaves the figure below that line writable);
     5. gently inpaint only the writable area with ``FluxInpaintPipeline`` so the
        background closes around the figure without disturbing him or the wider
        scene;
@@ -41,11 +41,11 @@ DEFAULT_FLUX_MODEL_ID = "black-forest-labs/FLUX.1-dev"
 # A paste-specific prompt: the goal is to close the crowd seamlessly around a
 # single inserted figure, not to restyle the whole scene.
 DEFAULT_PASTE_PROMPT = (
-    "Where's Wally illustration style, flat cartoon art with bold black "
-    "outlines, a single character standing naturally within a dense crowd of "
-    "tiny distinct people, the background crowd and floor closing seamlessly "
-    "around the character, clean linework, limited bright palette of red "
-    "yellow blue beige, no merged figures, no blurry regions"
+    "Wimmelbild, teeming picture, hidden-object puzzle, flat cartoon art, "
+    "bold black outlines, bright colours, hundreds of tiny detailed figures, "
+    "isometric bird's eye view, dense crowd, highly detailed, no text, lots of people "
+    "doing various activities, flat 2D illustration, comic book style, "
+    "extremely detailed crowd scene, illustrated book style"
 )
 
 DEFAULT_PASTE_NEGATIVE_PROMPT = (
@@ -73,7 +73,7 @@ class PasteAlanConfig:
     strategy: str = "random"
     conf_threshold: float = 0.2
     yolo_model: str = "yolov8x"
-    seed: int = None
+    seed: int | None = None
 
     # Selection no-go zones (fractions of the image). A candidate is rejected if
     # its figure box (person bbox + Alan's paste box) reaches into the edge
@@ -84,27 +84,32 @@ class PasteAlanConfig:
 
     # Figure sizing. Detector boxes clip the person, so scale Alan up relative
     # to the bbox height (bottom-aligned, grows upward).
-    figure_scale: float = 1.10
+    figure_scale: float = 1.20
 
     # Crop geometry (fractions of the figure box on each side).
     gap_padding: float = 0.4
     border_padding: float = 0.2
     crop_size: int = 512  # inference resolution (multiple of 16)
 
-    # Mask shape.
-    protect_fraction: float = 0.6  # top fraction of the figure kept frozen
+    # Mask shape. protect_fraction = fraction of the figure (from the top) kept
+    # frozen; 1.0 freezes the whole silhouette including the legs, so only the
+    # gap ring around him is repaired (redrawing his legs caused more problems
+    # than it fixed).
+    protect_fraction: float = 1.0
     alpha_threshold: int = 128
-    dilate: int = 8  # grow protected silhouette before feathering
-    feather: int = 8
+    dilate: int = 0  # grow protected silhouette before feathering
+    feather: int = 0
 
     # Refinement. strength = fraction of noise added to the writable region;
     # 0.7 redraws it enough to clear leftover artifacts around the figure.
     model_id: str = DEFAULT_FLUX_MODEL_ID
     prompt: str = DEFAULT_PASTE_PROMPT
     negative_prompt: str = DEFAULT_PASTE_NEGATIVE_PROMPT
-    strength: float = 0.4
+    strength: float = 0.2
     steps: int = 28
-    guidance_scale: float = 3.5
+    guidance_scale: float = 2.0  # lower = follow surrounding image more, prompt less
+    refine_passes: int = 3  # repeat the add-noise/denoise pass on its own output
+    gap_blur: float = 0.0  # pre-blur the writable gap (0 = off); helps at higher strength
     device: str = "cuda:0"
     torch_dtype: str = "bfloat16"
 
@@ -455,7 +460,15 @@ def run_paste_alan(
         _emit(progress, f"Loading FluxInpaintPipeline ({config.model_id})...")
         pipe = FluxInpaintPipeline.from_pretrained(config.model_id, torch_dtype=dtype).to(config.device)
 
-    refined_crop = _refine_crop(pasted_crop, mask, config, pipe, ml)
+    # Optionally pre-blur the writable gap (not the frozen figure or border) so
+    # the model regenerates detail there from a soft base instead of locking
+    # onto the original content's edges.
+    refine_input = pasted_crop
+    if config.gap_blur > 0:
+        blurred = pasted_crop.filter(ImageFilter.GaussianBlur(config.gap_blur))
+        refine_input = Image.composite(blurred, pasted_crop, mask)
+
+    refined_crop = _refine_crop(refine_input, mask, config, pipe, ml, progress)
 
     # Composite the refined crop back over the pasted crop using the feathered
     # mask, so frozen pixels stay bit-identical, then drop it into the scene.
@@ -491,8 +504,15 @@ def _refine_crop(
     config: PasteAlanConfig,
     pipe: Any,
     ml: dict[str, Any],
+    progress: Any | None = None,
 ) -> Image.Image:
-    """Gentle masked inpaint at the model resolution, returned at crop size."""
+    """Gentle masked inpaint at the model resolution, returned at crop size.
+
+    Runs ``refine_passes`` add-noise/denoise passes, feeding each pass's output
+    back in as the next pass's input. Staying at model resolution across passes
+    avoids repeated resize softening; the same mask freezes the figure and
+    border every pass, so only the gap ring accumulates refinement.
+    """
     torch = ml["torch"]
     size = config.crop_size
     crop_size = pasted_crop.size
@@ -500,20 +520,29 @@ def _refine_crop(
     model_image = pasted_crop.resize((size, size), Image.LANCZOS)
     model_mask = mask.resize((size, size), Image.LANCZOS)
 
-    generator = torch.Generator(device=config.device).manual_seed(config.seed)
-    result = pipe(
-        prompt=config.prompt,
-        negative_prompt=config.negative_prompt,
-        image=model_image,
-        mask_image=model_mask,
-        height=size,
-        width=size,
-        strength=config.strength,
-        num_inference_steps=config.steps,
-        guidance_scale=config.guidance_scale,
-        generator=generator,
-    ).images[0]
-    return result.resize(crop_size, Image.LANCZOS)
+    passes = max(1, config.refine_passes)
+    for pass_idx in range(passes):
+        # Offset the seed per pass so passes differ but stay reproducible.
+        generator = (
+            None
+            if config.seed is None
+            else torch.Generator(device=config.device).manual_seed(config.seed + pass_idx)
+        )
+        model_image = pipe(
+            prompt=config.prompt,
+            negative_prompt=config.negative_prompt,
+            image=model_image,
+            mask_image=model_mask,
+            height=size,
+            width=size,
+            strength=config.strength,
+            num_inference_steps=config.steps,
+            guidance_scale=config.guidance_scale,
+            generator=generator,
+        ).images[0]
+        _emit(progress, f"  refine pass {pass_idx + 1}/{passes} done")
+
+    return model_image.resize(crop_size, Image.LANCZOS)
 
 
 def _save_debug(
