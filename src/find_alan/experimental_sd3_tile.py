@@ -103,11 +103,51 @@ def _save_blended_canvas(
     return output_path
 
 
+def _config_width(model: Any) -> int | None:
+    config = getattr(model, "config", None)
+    heads = getattr(config, "num_attention_heads", None)
+    dim = getattr(config, "attention_head_dim", None)
+    if heads is None or dim is None:
+        return None
+    return int(heads) * int(dim)
+
+
+def _validate_controlnet_compatible(
+    pipe: Any, model_id: str, controlnet_id: str
+) -> None:
+    transformer_width = _config_width(getattr(pipe, "transformer", None))
+    controlnet_width = _config_width(getattr(pipe, "controlnet", None))
+    if (
+        transformer_width is None
+        or controlnet_width is None
+        or transformer_width == controlnet_width
+    ):
+        return
+
+    raise ValueError(
+        "SD3 model/controlnet mismatch: "
+        f"{model_id} uses transformer width {transformer_width}, but "
+        f"{controlnet_id} uses ControlNet width {controlnet_width}. "
+        "Use a ControlNet trained for the same SD3 backbone."
+    )
+
+
 def run_sd3_tile_upscale(config: "DiffusionUpscaleConfig") -> Path:
     ml = _import_sd3()
     np = ml["np"]
     torch = ml["torch"]
     Image = ml["Image"]
+
+    control_guidance_start = float(config.sd3_control_guidance_start)
+    control_guidance_end = float(config.sd3_control_guidance_end)
+    if not 0 <= control_guidance_start <= 1:
+        raise ValueError("--sd3-control-guidance-start must be between 0 and 1")
+    if not 0 <= control_guidance_end <= 1:
+        raise ValueError("--sd3-control-guidance-end must be between 0 and 1")
+    if control_guidance_start > control_guidance_end:
+        raise ValueError(
+            "--sd3-control-guidance-start must be <= --sd3-control-guidance-end"
+        )
 
     device = config.device or ("cuda" if torch.cuda.is_available() else "cpu")
     dtype = torch.float16 if device.startswith("cuda") else torch.float32
@@ -159,6 +199,8 @@ def run_sd3_tile_upscale(config: "DiffusionUpscaleConfig") -> Path:
             variant="fp16" if dtype is torch.float16 else None,
         )
 
+    _validate_controlnet_compatible(pipe, config.model_id, config.controlnet_id)
+
     if (
         config.cpu_offload
         and device.startswith("cuda")
@@ -194,6 +236,9 @@ def run_sd3_tile_upscale(config: "DiffusionUpscaleConfig") -> Path:
             result = pipe(
                 prompt=prompt,
                 negative_prompt=config.negative_prompt,
+                guidance_scale=float(config.guidance_scale),
+                control_guidance_start=control_guidance_start,
+                control_guidance_end=control_guidance_end,
                 control_image=reference_tile,
                 controlnet_conditioning_scale=float(config.controlnet_strength),
                 height=crop.height,
