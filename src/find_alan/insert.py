@@ -74,30 +74,52 @@ def run_insertion(
     num_inference_steps: int = 50,
     guidance_scale: float = 10.0,
     seed: int | None = None,
+    reference_repeats: int = 1,
 ) -> Image.Image:
     """
-    Insert *figure* into *scene* without a mask.
+    Insert *figure* into *scene*.
 
     The model infers placement from the prompt and scene context.
     *strength* controls how much the scene is allowed to change (0–1);
     lower values preserve more of the original.
+
+    *reference_repeats* passes the reference image multiple times in the
+    conditioning list.  The pipeline has no explicit reference-scale
+    parameter (guidance_scale is ignored on distilled models), so
+    repeating the reference is the primary way to increase fidelity.
+    Values of 2–4 noticeably improve adherence; beyond ~6 the image
+    quality degrades.
     """
     generator = None
     if seed is not None:
-        generator = torch.Generator(device=pipe._execution_device).manual_seed(seed)
+        generator = torch.Generator(
+            device=pipe._execution_device
+        ).manual_seed(seed)
 
     w, h = scene.size
-
-    # The inpaint pipeline requires a mask. An all-white mask tells it to
-    # repaint the entire image; `strength` controls how far the result can
-    # drift from the original scene (lower = preserve more background).
     full_mask = Image.new("L", (w, h), 255)
+
+    ref = figure.convert("RGB")
+    target = min(w, h)
+    longest = max(ref.width, ref.height)
+    if longest != target:
+        scale = target / longest
+        ref = ref.resize(
+            (max(1, round(ref.width * scale)),
+             max(1, round(ref.height * scale))),
+            Image.LANCZOS,
+        )
+
+    padded_ref = _pad_to_square(ref)
+    image_reference = (
+        [padded_ref] * reference_repeats if reference_repeats > 1 else padded_ref
+    )
 
     result = pipe(
         prompt=prompt,
         image=scene.convert("RGB"),
         mask_image=full_mask,
-        image_reference=_pad_to_square(figure.convert("RGB")),
+        image_reference=image_reference,
         height=h,
         width=w,
         strength=strength,
