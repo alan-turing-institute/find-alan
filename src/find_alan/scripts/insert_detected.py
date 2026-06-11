@@ -83,12 +83,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--padding",
         type=float,
-        default=1.0,
+        default=0.2,
         metavar="FLOAT",
         help=(
             "Fraction of bbox size to add around the crop on each side."
             " Larger values give FLUX.2-Klein more scene context."
-            " Default: 1.0."
+            " Default: 0.2."
         ),
     )
     p.add_argument(
