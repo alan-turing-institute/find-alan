@@ -315,25 +315,32 @@ def main(argv: list[str] | None = None) -> int:
     result = scene.copy()
     result.paste(result_sized, (px, py), mask=paste_mask)
 
-    if args.test:
-        # Visual debug aid: show where the inpainted crop was pasted.
-        line_width = max(2, min(scene.size) // 300)
-        ImageDraw.Draw(result).rectangle(
-            (px, py, px + pw - 1, py + ph - 1),
-            outline=(255, 0, 0),
-            width=line_width,
-        )
-        print(
-            "[test] Drew red outline around inpainted region "
-            f"(x={px}, y={py}, w={pw}, h={ph})"
-        )
-
     from pathlib import Path
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    result.save(output_path)
-    print(f"Saved → {output_path}")
+
+    if args.test:
+        result.save(output_path)
+        print(f"Saved → {output_path}")
+
+        # Visual debug aid: draw red outline and save as a separate _box image.
+        line_width = max(2, min(scene.size) // 300)
+        box_result = result.copy()
+        ImageDraw.Draw(box_result).rectangle(
+            (px, py, px + pw - 1, py + ph - 1),
+            outline=(255, 0, 0),
+            width=line_width,
+        )
+        box_path = output_path.with_stem(output_path.stem + "_box")
+        box_result.save(box_path)
+        print(
+            f"[test] Saved bounding box image → {box_path} "
+            f"(x={px}, y={py}, w={pw}, h={ph})"
+        )
+    else:
+        result.save(output_path)
+        print(f"Saved → {output_path}")
     return 0
 
 
