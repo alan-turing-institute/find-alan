@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import random
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -63,9 +64,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--output",
-        required=True,
+        default=None,
         metavar="PATH",
-        help="Where to save the result.",
+        help=(
+            "Where to save the result. If omitted, saves to"
+            " examples/<figure>_<scene>_<seed>.png"
+            " (and examples/<figure>_<scene>_<seed>_box.png)."
+        ),
     )
 
     p.add_argument(
@@ -196,14 +201,6 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optionally save the bbox mask image for inspection.",
     )
-    p.add_argument(
-        "--test",
-        action="store_true",
-        help=(
-            "Draw a red outline around the inpainted crop region in the"
-            " final image for quick visual verification."
-        ),
-    )
     return p
 
 
@@ -260,8 +257,6 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Padded bbox (x={px}, y={py}, w={pw}, h={ph})")
 
     if args.save_mask:
-        from pathlib import Path
-
         save = (
             seg_mask if seg_mask is not None else bbox_to_mask(scene.size, padded_bbox)
         )
@@ -315,32 +310,29 @@ def main(argv: list[str] | None = None) -> int:
     result = scene.copy()
     result.paste(result_sized, (px, py), mask=paste_mask)
 
-    from pathlib import Path
+    if args.output is not None:
+        output_path = Path(args.output)
+    else:
+        figure_stem = Path(args.figure).stem
+        scene_stem = Path(args.scene).stem
+        seed_str = str(args.seed) if args.seed is not None else "none"
+        output_path = Path("examples") / f"{figure_stem}_{scene_stem}_{seed_str}.png"
 
-    output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if args.test:
-        result.save(output_path)
-        print(f"Saved → {output_path}")
+    result.save(output_path)
+    print(f"Saved → {output_path}")
 
-        # Visual debug aid: draw red outline and save as a separate _box image.
-        line_width = max(2, min(scene.size) // 300)
-        box_result = result.copy()
-        ImageDraw.Draw(box_result).rectangle(
-            (px, py, px + pw - 1, py + ph - 1),
-            outline=(255, 0, 0),
-            width=line_width,
-        )
-        box_path = output_path.with_stem(output_path.stem + "_box")
-        box_result.save(box_path)
-        print(
-            f"[test] Saved bounding box image → {box_path} "
-            f"(x={px}, y={py}, w={pw}, h={ph})"
-        )
-    else:
-        result.save(output_path)
-        print(f"Saved → {output_path}")
+    line_width = max(2, min(scene.size) // 300)
+    box_result = result.copy()
+    ImageDraw.Draw(box_result).rectangle(
+        (px, py, px + pw - 1, py + ph - 1),
+        outline=(255, 0, 0),
+        width=line_width,
+    )
+    box_path = output_path.with_stem(output_path.stem + "_box")
+    box_result.save(box_path)
+    print(f"Saved bounding box image → {box_path}")
     return 0
 
 
