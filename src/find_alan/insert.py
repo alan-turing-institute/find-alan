@@ -92,16 +92,15 @@ def run_insertion(
     """
     generator = None
     if seed is not None:
-        generator = torch.Generator(device=pipe._execution_device).manual_seed(seed)
+        generator = torch.Generator(
+            device=pipe._execution_device
+        ).manual_seed(seed)
 
     w, h = scene.size
     full_mask = Image.new("L", (w, h), 255)
 
-    # Keep the reference at a minimum of 512px on the longest side so the
-    # VAE encoder has enough detail to work with, even when the scene crop
-    # is small.
     ref = figure.convert("RGB")
-    target = max(512, min(w, h))
+    target = min(w, h)
     longest = max(ref.width, ref.height)
     if longest != target:
         scale = target / longest
@@ -112,7 +111,9 @@ def run_insertion(
         )
 
     padded_ref = _pad_to_square(ref)
-    image_reference = [padded_ref] * reference_repeats if reference_repeats > 1 else padded_ref
+    image_reference = (
+        [padded_ref] * reference_repeats if reference_repeats > 1 else padded_ref
+    )
 
     result = pipe(
         prompt=prompt,
