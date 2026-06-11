@@ -392,3 +392,90 @@ Key options:
 ```sh
 uv run find-alan-insert-detected --help
 ```
+
+## Current Upscale Experiment Settings
+
+### Flux2 source images, SDXL MultiDiffusion 3x display batch
+
+The Flux2-style source images in `data/examples/lr/flux2` are being upscaled for large-screen review with SDXL ControlNet MultiDiffusion, not Flux2. The queued batch writes to `data/examples/out/flux2`.
+
+Queued batch suffix:
+
+```text
+c31d3a8a_rb826e0f
+```
+
+Output naming pattern:
+
+```text
+data/examples/out/flux2/<source_stem>_sdxl_md_3x_upscaleprompt_d075_c035_tile1024_c31d3a8a_rb826e0f.png
+```
+
+Settings:
+
+```sh
+uv run find-alan-upscale input.png output.png \
+  --engine multidiffusion \
+  --scale 3 \
+  --steps 28 \
+  --denoising-strength 0.75 \
+  --controlnet-strength 0.35 \
+  --guidance-scale 4.5 \
+  --md-tile-size 1024 \
+  --md-overlap 512 \
+  --md-jitter 256
+```
+
+Rationale:
+
+- `3x` turns the `1920x1072` sources into roughly `5760x3216`, which is better suited to large-screen display than `2x`.
+- `1024` tiles with `512` overlap keep the setting consistent with the best conference SDXL MultiDiffusion runs and prioritize seam control.
+- `denoising-strength 0.75` and `controlnet-strength 0.35` are the current preferred balance for adding detail while keeping the crowd layout anchored.
+- Refinement is intentionally not queued for this batch yet; inspect the 3x bases first, then refine selected outputs.
+
+### Refinement pass after base upscale
+
+Use `find-alan-refine` only after a base upscale has been selected or when a specific comparison needs polishing. The refinement stage is a tiled Flux inpaint pass: each patch sees a `512x512` context window and writes only the inner `256x256` region when `--inner-ratio 0.5` is used.
+
+Default comparison refinement settings:
+
+```sh
+uv run find-alan-refine base.png output_dir \
+  --iterations 4 \
+  --strength 0.2 \
+  --steps 28 \
+  --guidance-scale 3.5 \
+  --outer-size 512 \
+  --inner-ratio 0.5 \
+  --feather 4 \
+  --max-batch-size 12
+```
+
+Output directory naming pattern:
+
+```text
+data/examples/out/<set>/refined/<base_stem>_refine_default_i4_s020_steps28_c<commit7>_r<run7>
+```
+
+For a heavier refinement stress test, increase iterations while keeping strength fixed:
+
+```sh
+uv run find-alan-refine base.png output_dir \
+  --iterations 12 \
+  --strength 0.2 \
+  --steps 28 \
+  --guidance-scale 3.5 \
+  --outer-size 512 \
+  --inner-ratio 0.5 \
+  --feather 4 \
+  --max-batch-size 12
+```
+
+`--max-batch-size 24` can improve throughput on an otherwise empty 80 GB GPU, but it is more fragile. Use `12` as the reliable default and only raise it for throughput experiments.
+
+Operational notes:
+
+- Keep `pueue parallel 1` for these runs unless jobs are pinned to separate GPUs.
+- If refinement fails with CUDA OOM while loading the pipeline, lowering `--max-batch-size` usually will not help; that failure happens before patch batches start and usually means another process is already occupying VRAM.
+- If refinement fails during patch processing, retry with a smaller batch size such as `--max-batch-size 6`.
+- For 3x Flux2-source bases, inspect the base upscales first and refine only selected outputs.
