@@ -136,21 +136,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="How much the crop can change (0–1). Default: 0.99.",
     )
     p.add_argument(
-        "--steps", type=int, default=75, metavar="INT",
-        help=(
-            "Inference steps. More steps improve fidelity to the reference"
-            " (guidance scale is unused on this distilled model)."
-            " Default: 75."
-        ),
+        "--steps", type=int, default=50, metavar="INT",
+        help="Inference steps. Default: 50.",
     )
     p.add_argument(
         "--guidance-scale",
         type=float,
-        default=0.0,
+        default=20.0,
         metavar="FLOAT",
         help=(
-            "CFG scale. FLUX.2-Klein is a distilled model and ignores"
-            " this — left for API compatibility. Default: 0.0."
+            "CFG scale. Higher values push the output closer to the"
+            " reference figure. Default: 20.0."
         ),
     )
     p.add_argument(
@@ -265,24 +261,25 @@ def main(argv: list[str] | None = None) -> int:
     result_sized = result_crop.resize((pw, ph), Image.LANCZOS)
     feather = min(args.feather, max(4, min(pw, ph) // 8))
 
-    if seg_mask is not None:
-        # Person-shaped composite: use the segmentation silhouette so only
-        # the area the person occupies is replaced.  A slight dilation covers
-        # the person's very edge; a 1px blur anti-aliases the polygon.
-        dilation = max(4, min(pw, ph) // 20)
-        paste_mask = dilate_mask(seg_mask, radius=dilation).crop(crop_box)
-    else:
-        # Feathered rectangle: smoothly blends the generated region into the
-        # original scene at the crop boundary.
-        paste_mask = Image.new("L", (pw, ph), 0)
-        inner = [feather, feather, pw - feather, ph - feather]
-        ImageDraw.Draw(paste_mask).rectangle(inner, fill=255)
-        paste_mask = paste_mask.filter(
-            ImageFilter.GaussianBlur(radius=feather)
-        )
+    # Layer 1 — feathered rectangle: smoothly blends any background changes
+    # from FLUX.2-Klein into the original scene at the crop edges.
+    bg_mask = Image.new("L", (pw, ph), 0)
+    inner = [feather, feather, pw - feather, ph - feather]
+    ImageDraw.Draw(bg_mask).rectangle(inner, fill=255)
+    bg_mask = bg_mask.filter(ImageFilter.GaussianBlur(radius=feather))
 
     result = scene.copy()
-    result.paste(result_sized, (px, py), mask=paste_mask)
+    result.paste(result_sized, (px, py), mask=bg_mask)
+
+    if seg_mask is not None:
+        # Layer 2 — sharp person silhouette: pastes the new figure over the
+        # exact shape of the replaced person with no feathering so the old
+        # person cannot bleed through at the silhouette boundary.  A 1px
+        # blur is enough to anti-alias the polygon without softening it.
+        figure_mask = seg_mask.crop(crop_box).filter(
+            ImageFilter.GaussianBlur(radius=1)
+        )
+        result.paste(result_sized, (px, py), mask=figure_mask)
 
     from pathlib import Path
     output_path = Path(args.output)
