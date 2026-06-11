@@ -3,7 +3,11 @@
 Detects people in a crowd scene and returns bounding boxes that can be
 passed directly to the inpaint pipeline as insertion targets.
 
-The model (yolov8n.pt, ~6 MB) is downloaded automatically on first use.
+Pass model_size ending in "-seg" (e.g. "yolov8n-seg") to
+load_detector() to enable segmentation mask output from
+detect_people_with_masks().
+
+The models (~6 MB each) are downloaded automatically on first use.
 """
 
 from __future__ import annotations
@@ -11,7 +15,7 @@ from __future__ import annotations
 import random as _random
 from typing import Literal
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter
 
 _PERSON_CLASS = 0  # COCO class index for "person"
 
@@ -42,6 +46,64 @@ def detect_people(
                 x1, y1, x2, y2 = (int(v) for v in box.xyxy[0].tolist())
                 bboxes.append((x1, y1, x2 - x1, y2 - y1))
     return bboxes
+
+
+def detect_people_with_masks(
+    detector,
+    scene: Image.Image,
+    conf_threshold: float = 0.3,
+) -> list[tuple[tuple[int, int, int, int], Image.Image]]:
+    """Detect people and return (bbox, mask) pairs.
+
+    Requires a segmentation model (e.g. yolov8n-seg).  Each mask is a
+    greyscale image the same size as *scene* — white where the person is,
+    black elsewhere.  Falls back to a filled rectangle if the model returns
+    no polygon for a detection.
+    """
+    results = detector(scene, classes=[_PERSON_CLASS], verbose=False)
+    detections: list[tuple[tuple[int, int, int, int], Image.Image]] = []
+    w, h = scene.size
+
+    for r in results:
+        masks_data = getattr(r, "masks", None)
+        for i, box in enumerate(r.boxes):
+            if float(box.conf[0]) < conf_threshold:
+                continue
+            x1, y1, x2, y2 = (int(v) for v in box.xyxy[0].tolist())
+            bbox = (x1, y1, x2 - x1, y2 - y1)
+
+            if masks_data is not None and i < len(masks_data):
+                # xy gives a list of (N,2) polygon arrays in image coordinates
+                poly_coords = masks_data.xy[i]
+                mask = Image.new("L", (w, h), 0)
+                if len(poly_coords) >= 3:
+                    pts = [(float(p[0]), float(p[1])) for p in poly_coords]
+                    ImageDraw.Draw(mask).polygon(pts, fill=255)
+                else:
+                    ImageDraw.Draw(mask).rectangle(
+                        [x1, y1, x2, y2], fill=255
+                    )
+            else:
+                mask = Image.new("L", (w, h), 0)
+                ImageDraw.Draw(mask).rectangle([x1, y1, x2, y2], fill=255)
+
+            detections.append((bbox, mask))
+
+    return detections
+
+
+def dilate_mask(
+    mask: Image.Image, radius: int = 10
+) -> Image.Image:
+    """Expand a binary mask outward by *radius* pixels.
+
+    Uses PIL MaxFilter (morphological dilation) then softens the edge
+    with a Gaussian feather so the composite boundary isn't hard.
+    """
+    # MaxFilter size must be odd; PIL clamps large sizes internally.
+    size = 2 * radius + 1
+    dilated = mask.filter(ImageFilter.MaxFilter(size=size))
+    return dilated.filter(ImageFilter.GaussianBlur(radius=radius // 2 or 1))
 
 
 def pick_target(

@@ -19,6 +19,8 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from find_alan.detect import (
     detect_people,
+    detect_people_with_masks,
+    dilate_mask,
     load_detector,
     pad_bbox,
     pick_target,
@@ -106,7 +108,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "--yolo-model",
         default="yolov8n",
         metavar="NAME",
-        help="YOLOv8 model variant (yolov8n/s/m/l/x). Default: yolov8n.",
+        help=(
+            "YOLOv8 model variant (yolov8n/s/m/l/x). Use the matching"
+            " '-seg' variant (e.g. yolov8n-seg) to enable person-shaped"
+            " segmentation masks for compositing. Default: yolov8n."
+        ),
+    )
+    p.add_argument(
+        "--segmentation",
+        action="store_true",
+        help=(
+            "Use person-shaped segmentation mask for compositing instead"
+            " of a feathered rectangle. Requires a '-seg' YOLO model."
+        ),
     )
     p.add_argument(
         "--prompt",
@@ -160,11 +174,29 @@ def main(argv: list[str] | None = None) -> int:
         f" (YOLO {args.yolo_model}, conf≥{args.conf})..."
     )
     detector = load_detector(args.yolo_model)
-    bboxes = detect_people(detector, scene, conf_threshold=args.conf)
 
-    if not bboxes:
-        print("No people detected. Try lowering --conf or check the scene.")
-        return 1
+    seg_mask: Image.Image | None = None
+    if args.segmentation:
+        detections = detect_people_with_masks(
+            detector, scene, conf_threshold=args.conf
+        )
+        if not detections:
+            print(
+                "No people detected. Try lowering --conf or check the"
+                " scene image."
+            )
+            return 1
+        bboxes = [bbox for bbox, _ in detections]
+        seg_masks = {bbox: mask for bbox, mask in detections}
+    else:
+        bboxes = detect_people(detector, scene, conf_threshold=args.conf)
+        seg_masks = {}
+        if not bboxes:
+            print(
+                "No people detected. Try lowering --conf or check the"
+                " scene image."
+            )
+            return 1
 
     print(
         f"Found {len(bboxes)} person(s)."
@@ -181,15 +213,20 @@ def main(argv: list[str] | None = None) -> int:
     x, y, w, h = target_bbox
     print(f"Target bbox (x={x}, y={y}, w={w}, h={h})")
 
+    if args.segmentation and target_bbox in seg_masks:
+        seg_mask = seg_masks[target_bbox]
+
     padded_bbox = pad_bbox(target_bbox, scene.size, padding=args.padding)
     px, py, pw, ph = padded_bbox
     print(f"Padded bbox (x={px}, y={py}, w={pw}, h={ph})")
 
     if args.save_mask:
         from pathlib import Path
-        mask = bbox_to_mask(scene.size, padded_bbox)
+        save = seg_mask if seg_mask is not None else bbox_to_mask(
+            scene.size, padded_bbox
+        )
         Path(args.save_mask).parent.mkdir(parents=True, exist_ok=True)
-        mask.save(args.save_mask)
+        save.save(args.save_mask)
         print(f"Mask saved → {args.save_mask}")
 
     # Crop the scene to the padded detection region and run FLUX.2-Klein on
@@ -218,15 +255,25 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
     )
 
-    # Feathered composite: white centre fades to black at the crop edges so
-    # the boundary blends into the surrounding scene rather than forming a
-    # hard rectangular seam.
     result_sized = result_crop.resize((pw, ph), Image.LANCZOS)
-    feather = args.feather
-    paste_mask = Image.new("L", (pw, ph), 0)
-    inner = [feather, feather, pw - feather, ph - feather]
-    ImageDraw.Draw(paste_mask).rectangle(inner, fill=255)
-    paste_mask = paste_mask.filter(ImageFilter.GaussianBlur(radius=feather))
+
+    if seg_mask is not None:
+        # Person-shaped composite: dilate the segmentation mask slightly so
+        # the very edge of the figure doesn't get hard-clipped, then crop it
+        # to the padded bbox region for pasting.
+        dilation = max(4, min(pw, ph) // 20)
+        dilated = dilate_mask(seg_mask, radius=dilation)
+        paste_mask = dilated.crop(crop_box)
+    else:
+        # Feathered rectangle: scale feather relative to crop size so it
+        # doesn't swamp a small crop.
+        feather = min(args.feather, max(4, min(pw, ph) // 8))
+        paste_mask = Image.new("L", (pw, ph), 0)
+        inner = [feather, feather, pw - feather, ph - feather]
+        ImageDraw.Draw(paste_mask).rectangle(inner, fill=255)
+        paste_mask = paste_mask.filter(
+            ImageFilter.GaussianBlur(radius=feather)
+        )
 
     result = scene.copy()
     result.paste(result_sized, (px, py), mask=paste_mask)
